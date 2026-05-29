@@ -6,6 +6,7 @@ import com.cloudinary.android.callback.ErrorInfo
 import com.cloudinary.android.callback.UploadCallback
 import com.example.auramusic.domain.model.Category
 import com.example.auramusic.domain.model.Song
+import com.example.auramusic.domain.model.Comment
 import com.example.auramusic.domain.repository.SongRepository
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
@@ -15,6 +16,10 @@ import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
 import com.example.auramusic.domain.model.Playlist
 import com.google.firebase.firestore.FieldValue
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+
 class SongRepositoryImpl(
     private val firestore: FirebaseFirestore
 ) : SongRepository {
@@ -296,5 +301,45 @@ class SongRepositoryImpl(
         }
     } catch (e: Exception) {
         Result.failure(e)
+    }
+
+    // Comments Implementation
+    override suspend fun addComment(
+        songId: String,
+        userId: String,
+        userName: String,
+        userAvatar: String,
+        content: String
+    ): Result<Unit> = try {
+        val docRef = firestore.collection("songs").document(songId).collection("comments").document()
+        val comment = Comment(
+            id = docRef.id,
+            userId = userId,
+            userName = userName,
+            userAvatar = userAvatar,
+            content = content,
+            timestamp = System.currentTimeMillis()
+        )
+        docRef.set(comment).await()
+        Result.success(Unit)
+    } catch (e: Exception) {
+        Result.failure(e)
+    }
+
+    override fun getComments(songId: String): Flow<List<Comment>> = callbackFlow {
+        val subscription = firestore.collection("songs").document(songId)
+            .collection("comments")
+            .orderBy("timestamp", Query.Direction.DESCENDING)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    close(error)
+                    return@addSnapshotListener
+                }
+                if (snapshot != null) {
+                    val comments = snapshot.toObjects(Comment::class.java)
+                    trySend(comments)
+                }
+            }
+        awaitClose { subscription.remove() }
     }
 }

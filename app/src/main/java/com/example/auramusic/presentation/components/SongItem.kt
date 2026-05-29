@@ -27,8 +27,7 @@ fun SongItem(
         modifier = modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            .glassmorphism(cornerRadius = 16.dp, color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
             .clickable { onPlayClick(song) }
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically

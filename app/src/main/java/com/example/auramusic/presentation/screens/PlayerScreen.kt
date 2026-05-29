@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Comment
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Pause
@@ -36,6 +37,8 @@ import androidx.media3.exoplayer.ExoPlayer
 import coil.compose.AsyncImage
 import com.example.auramusic.presentation.viewmodel.AuthViewModel
 import com.example.auramusic.presentation.viewmodel.SongViewModel
+import com.example.auramusic.presentation.components.RotatingVinyl
+import com.example.auramusic.presentation.components.glassmorphism
 import kotlinx.coroutines.delay
 import java.util.Locale
 
@@ -44,6 +47,7 @@ import java.util.Locale
 fun PlayerScreen(
     viewModel: SongViewModel,
     authViewModel: AuthViewModel,
+    exoPlayer: ExoPlayer,
     onBackClick: () -> Unit,
     modifier: Modifier = Modifier,
     onArtistClick: (String) -> Unit,
@@ -55,58 +59,25 @@ fun PlayerScreen(
 
     // Chỉ giữ lại trạng thái bảng chọn Playlist
     var showPlaylists by remember { mutableStateOf(false) }
+    var showComments by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     var totalDuration by remember { mutableLongStateOf(1000L) }
 
-    val exoPlayer = remember {
-        ExoPlayer.Builder(context).build().apply {
-            addListener(object : Player.Listener {
-                override fun onPlaybackStateChanged(playbackState: Int) {
-                    if (playbackState == Player.STATE_READY) {
-                        totalDuration = this@apply.duration.coerceAtLeast(1000L)
-                    } else if (playbackState == Player.STATE_ENDED) {
-                        viewModel.pauseSong()
-                        viewModel.updateProgress(0)
-                        this@apply.seekTo(0)
-                    }
-                }
-            })
-        }
-    }
-
     LaunchedEffect(currentSong?.audioUrl) {
         currentSong?.audioUrl?.let { url ->
-            val mediaItem = MediaItem.fromUri(url)
-            exoPlayer.setMediaItem(mediaItem)
-            exoPlayer.prepare()
-            if (state.isPlaying) {
-                exoPlayer.play()
-            }
             if (currentUser != null) {
                 viewModel.checkIsSongLiked(currentUser.uid, currentSong.songId)
             }
         }
     }
 
-    LaunchedEffect(state.isPlaying) {
-        if (state.isPlaying) {
-            exoPlayer.play()
-        } else {
-            exoPlayer.pause()
-        }
-    }
-
-    LaunchedEffect(state.isPlaying) {
-        while (state.isPlaying) {
-            viewModel.updateProgress((exoPlayer.currentPosition / 1000).toInt())
+    LaunchedEffect(exoPlayer.duration) {
+        while(true) {
+            if (exoPlayer.duration > 0) {
+                totalDuration = exoPlayer.duration
+            }
             delay(1000L)
-        }
-    }
-
-    DisposableEffect(Unit) {
-        onDispose {
-            exoPlayer.release()
         }
     }
 
@@ -151,16 +122,12 @@ fun PlayerScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // Album Art
-            AsyncImage(
-                model = currentSong.imageUrl,
-                contentDescription = null,
+            // Album Art - Thay bằng RotatingVinyl
+            RotatingVinyl(
+                imageUrl = currentSong.imageUrl,
+                isPlaying = state.isPlaying,
                 modifier = Modifier
-                    .aspectRatio(1f)
-                    .fillMaxWidth()
-                    .shadow(20.dp, RoundedCornerShape(24.dp))
-                    .clip(RoundedCornerShape(24.dp)),
-                contentScale = ContentScale.Crop
+                    .fillMaxWidth(0.85f)
             )
 
             Spacer(modifier = Modifier.height(40.dp))
@@ -181,19 +148,30 @@ fun PlayerScreen(
                     )
                 }
 
-                IconButton(onClick = {
-                    if (currentUser != null) {
-                        viewModel.toggleLike(currentUser.uid)
-                    } else {
-                        Toast.makeText(context, "Vui lòng đăng nhập để Like", Toast.LENGTH_SHORT).show()
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { showComments = true }) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Comment,
+                            contentDescription = "Comments",
+                            tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
+                            modifier = Modifier.size(28.dp)
+                        )
                     }
-                }) {
-                    Icon(
-                        imageVector = if (state.isCurrentSongLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                        contentDescription = "Like",
-                        tint = if (state.isCurrentSongLiked) Color.Red else Color.White,
-                        modifier = Modifier.size(32.dp)
-                    )
+
+                    IconButton(onClick = {
+                        if (currentUser != null) {
+                            viewModel.toggleLike(currentUser.uid)
+                        } else {
+                            Toast.makeText(context, "Vui lòng đăng nhập để Like", Toast.LENGTH_SHORT).show()
+                        }
+                    }) {
+                        Icon(
+                            imageVector = if (state.isCurrentSongLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                            contentDescription = "Like",
+                            tint = if (state.isCurrentSongLiked) Color.Red else Color.White,
+                            modifier = Modifier.size(32.dp)
+                        )
+                    }
                 }
             }
 
@@ -254,6 +232,138 @@ fun PlayerScreen(
                         }
                     )
                 }
+            )
+        }
+    }
+
+    if (showComments) {
+        val comments = state.comments
+        val songId = currentSong.songId
+
+        LaunchedEffect(songId) {
+            viewModel.loadComments(songId)
+        }
+
+        ModalBottomSheet(
+            onDismissRequest = { showComments = false },
+            containerColor = Color.Transparent
+        ) {
+            CommentSection(
+                comments = comments,
+                onSendComment = { text ->
+                    if (currentUser != null) {
+                        viewModel.addComment(
+                            songId = songId,
+                            userId = currentUser.uid,
+                            userName = currentUser.displayName ?: "User",
+                            userAvatar = currentUser.avatarUrl ?: "",
+                            content = text
+                        )
+                    } else {
+                        Toast.makeText(context, "Vui lòng đăng nhập để bình luận", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            )
+        }
+    }
+}
+
+@Composable
+fun CommentSection(
+    comments: List<com.example.auramusic.domain.model.Comment>,
+    onSendComment: (String) -> Unit
+) {
+    var commentText by remember { mutableStateOf("") }
+
+    Box(
+        modifier = Modifier
+            .fillMaxHeight(0.8f)
+            .fillMaxWidth()
+            .glassmorphism(color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f))
+    ) {
+        Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
+            Text(
+                "Bình luận (${comments.size})",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            
+            Spacer(modifier = Modifier.height(16.dp))
+
+            if (comments.isEmpty()) {
+                Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Text(
+                        "Chưa có bình luận nào. Hãy là người đầu tiên!",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+            } else {
+                LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    items(comments) { comment ->
+                        CommentItem(comment)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Ô nhập bình luận
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(24.dp))
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextField(
+                    value = commentText,
+                    onValueChange = { commentText = it },
+                    placeholder = { Text("Thêm bình luận...") },
+                    modifier = Modifier.weight(1f),
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        disabledContainerColor = Color.Transparent,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent
+                    )
+                )
+                IconButton(onClick = { 
+                    if (commentText.isNotBlank()) {
+                        onSendComment(commentText)
+                        commentText = ""
+                    }
+                }) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Comment,
+                        contentDescription = "Send",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun CommentItem(comment: com.example.auramusic.domain.model.Comment) {
+    Row(modifier = Modifier.fillMaxWidth()) {
+        AsyncImage(
+            model = comment.userAvatar.ifBlank { "https://cdn-icons-png.flaticon.com/512/149/149071.png" },
+            contentDescription = null,
+            modifier = Modifier.size(40.dp).clip(CircleShape),
+            contentScale = ContentScale.Crop
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column {
+            Text(comment.userName, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            Text(comment.content, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            Text(
+                text = java.text.DateFormat.getDateTimeInstance().format(java.util.Date(comment.timestamp)),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }

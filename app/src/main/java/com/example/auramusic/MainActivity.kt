@@ -9,6 +9,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.ui.Modifier
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.compose.rememberNavController
 import com.cloudinary.android.MediaManager
 import com.example.auramusic.data.repository.AuthRepositoryImpl
@@ -68,9 +76,57 @@ class MainActivity : ComponentActivity() {
             userRepository = userRepository,
             firestore = FirebaseFirestore.getInstance()
         )
+        
+        val themeViewModel = ThemeViewModel()
 
         setContent {
-            AuraMusicTheme {
+            val context = LocalContext.current
+            val songState by songViewModel.songState.collectAsState()
+            
+            val exoPlayer = remember {
+                ExoPlayer.Builder(context).build().apply {
+                    addListener(object : Player.Listener {
+                        override fun onPlaybackStateChanged(playbackState: Int) {
+                            if (playbackState == Player.STATE_ENDED) {
+                                songViewModel.pauseSong()
+                                songViewModel.updateProgress(0)
+                                seekTo(0)
+                            }
+                        }
+                    })
+                }
+            }
+
+            LaunchedEffect(songState.currentSong?.audioUrl) {
+                songState.currentSong?.audioUrl?.let { url ->
+                    val mediaItem = MediaItem.fromUri(url)
+                    exoPlayer.setMediaItem(mediaItem)
+                    exoPlayer.prepare()
+                    if (songState.isPlaying) {
+                        exoPlayer.play()
+                    }
+                }
+            }
+
+            LaunchedEffect(songState.isPlaying) {
+                if (songState.isPlaying) {
+                    exoPlayer.play()
+                } else {
+                    exoPlayer.pause()
+                }
+            }
+
+            LaunchedEffect(songState.isPlaying) {
+                while (true) {
+                    if (songState.isPlaying) {
+                        songViewModel.updateProgress((exoPlayer.currentPosition / 1000).toInt())
+                    }
+                    kotlinx.coroutines.delay(1000L)
+                }
+            }
+
+            val themeMode by themeViewModel.themeMode.collectAsState()
+            AuraMusicTheme(themeMode = themeMode) {
                 val navController = rememberNavController()
                 val currentUser = firebaseAuth.currentUser
 
@@ -81,7 +137,8 @@ class MainActivity : ComponentActivity() {
                             authViewModel = authViewModel,
                             songViewModel = songViewModel,
                             userViewModel = userViewModel,
-                            // ĐÃ DỌN SẠCH commentViewModel Ở ĐÂY
+                            themeViewModel = themeViewModel,
+                            exoPlayer = exoPlayer,
                             isUserLoggedIn = currentUser != null
                         )
                     }

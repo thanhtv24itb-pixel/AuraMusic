@@ -8,6 +8,7 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import androidx.media3.exoplayer.ExoPlayer
 import com.example.auramusic.presentation.screens.*
 import com.example.auramusic.presentation.viewmodel.*
 
@@ -37,6 +38,8 @@ fun NavGraph(
     authViewModel: AuthViewModel,
     songViewModel: SongViewModel,
     userViewModel: UserViewModel,
+    themeViewModel: ThemeViewModel,
+    exoPlayer: ExoPlayer,
 
     isUserLoggedIn: Boolean
 ) {
@@ -79,6 +82,7 @@ fun NavGraph(
                 songViewModel = songViewModel,
                 authViewModel = authViewModel,
                 userViewModel = userViewModel,
+                themeViewModel = themeViewModel,
                 navController = navController
             )
         }
@@ -86,8 +90,8 @@ fun NavGraph(
         composable(Screen.Player.route) {
             PlayerScreen(
                 viewModel = songViewModel,
-
                 authViewModel = authViewModel,
+                exoPlayer = exoPlayer,
                 onBackClick = { navController.popBackStack() },
                 onArtistClick = { artistId ->
                     navController.navigate(Screen.ArtistProfile.createRoute(artistId))

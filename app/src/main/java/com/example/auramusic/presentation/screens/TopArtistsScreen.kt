@@ -1,9 +1,10 @@
 package com.example.auramusic.presentation.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -12,23 +13,20 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.example.auramusic.domain.model.User
 import com.example.auramusic.presentation.viewmodel.UserViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TopArtistsScreen(
-    onBackClick: () -> Unit,
-    viewModel: UserViewModel
+    viewModel: UserViewModel,
+    onBackClick: () -> Unit
 ) {
     val topArtists by viewModel.topArtists.collectAsState()
-    val isLoading by viewModel.isLoading.collectAsState()
 
     LaunchedEffect(Unit) {
         viewModel.loadTopArtists()
@@ -42,63 +40,45 @@ fun TopArtistsScreen(
                     IconButton(onClick = onBackClick) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                    titleContentColor = MaterialTheme.colorScheme.onBackground,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onBackground
+                )
             )
         }
     ) { paddingValues ->
-        Box(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
                 .padding(paddingValues)
-                .background(Color(0xFF0F0F1E))
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            if (isLoading) {
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = Color.White)
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+            items(topArtists) { artist ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { /* Điều hướng đến Profile nghệ sĩ */ }
+                        .padding(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    itemsIndexed(topArtists) { index, artist ->
-                        ArtistRankItem(index + 1, artist)
+                    AsyncImage(
+                        model = artist.avatarUrl.ifBlank { "https://cdn-icons-png.flaticon.com/512/149/149071.png" },
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp).clip(CircleShape),
+                        contentScale = ContentScale.Crop
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column {
+                        Text(artist.displayName, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+                        Text("${artist.followerCount} người theo dõi", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
             }
-        }
-    }
-}
-
-@Composable
-fun ArtistRankItem(rank: Int, artist: User) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = "#$rank",
-            color = if (rank <= 3) Color(0xFFFFD700) else Color.Gray,
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.width(40.dp)
-        )
-        
-        AsyncImage(
-            model = artist.avatarUrl,
-            contentDescription = null,
-            modifier = Modifier
-                .size(50.dp)
-                .clip(CircleShape),
-            contentScale = ContentScale.Crop
-        )
-        
-        Spacer(modifier = Modifier.width(16.dp))
-        
-        Column {
-            Text(artist.displayName, color = Color.White, fontWeight = FontWeight.Bold)
-            Text("${artist.totalPlays} lượt nghe", color = Color.Gray, fontSize = 12.sp)
         }
     }
 }

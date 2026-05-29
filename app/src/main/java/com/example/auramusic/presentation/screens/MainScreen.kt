@@ -17,12 +17,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.LibraryMusic
-import androidx.compose.material.icons.filled.PlaylistAdd
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,17 +25,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
+import com.example.auramusic.domain.model.Song
 import com.example.auramusic.presentation.components.SongItem
+import com.example.auramusic.presentation.components.neumorphic
 import com.example.auramusic.presentation.navigation.Screen
-import com.example.auramusic.presentation.viewmodel.AuthViewModel
-import com.example.auramusic.presentation.viewmodel.SongViewModel
-import com.example.auramusic.presentation.viewmodel.UserViewModel
+import com.example.auramusic.presentation.theme.ThemeMode
+import com.example.auramusic.presentation.viewmodel.*
 
 sealed class BottomNavItem(val route: String, val icon: ImageVector, val label: String) {
     object Home : BottomNavItem("home", Icons.Default.Home, "Trang chủ")
@@ -55,36 +53,73 @@ fun MainScreen(
     songViewModel: SongViewModel,
     authViewModel: AuthViewModel,
     userViewModel: UserViewModel,
+    themeViewModel: ThemeViewModel,
     navController: NavHostController
 ) {
     var selectedItem by remember { mutableIntStateOf(0) }
     val items = listOf(BottomNavItem.Home, BottomNavItem.Search, BottomNavItem.Library, BottomNavItem.Upload)
+    val themeMode by themeViewModel.themeMode.collectAsState()
 
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
                 title = { Text("AuraMusic", fontWeight = FontWeight.Bold) },
                 actions = {
-                    IconButton(onClick = { navController.navigate(Screen.Profile.route) }) {
-                        Box(modifier = Modifier.size(32.dp).clip(RoundedCornerShape(16.dp)).background(Color.Gray))
+                    IconButton(onClick = {
+                        val newMode = if (themeMode == ThemeMode.DARK) ThemeMode.LIGHT else ThemeMode.DARK
+                        themeViewModel.setThemeMode(newMode)
+                    }) {
+                        Icon(
+                            imageVector = if (themeMode == ThemeMode.DARK) Icons.Default.LightMode else Icons.Default.DarkMode,
+                            contentDescription = "Toggle Theme",
+                            tint = MaterialTheme.colorScheme.onBackground
+                        )
                     }
-                }
+                    IconButton(onClick = { navController.navigate(Screen.Profile.route) }) {
+                        Box(modifier = Modifier
+                            .size(36.dp)
+                            .neumorphic(elevation = 4.dp, cornerRadius = 18.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primaryContainer)
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                    titleContentColor = MaterialTheme.colorScheme.onBackground
+                )
             )
         },
         bottomBar = {
-            NavigationBar {
-                items.forEachIndexed { index, item ->
-                    NavigationBarItem(
-                        icon = { Icon(item.icon, contentDescription = item.label) },
-                        label = { Text(item.label) },
-                        selected = selectedItem == index,
-                        onClick = { selectedItem = index }
-                    )
+            Column {
+                MiniPlayer(
+                    viewModel = songViewModel,
+                    onMiniPlayerClick = { navController.navigate(Screen.Player.route) }
+                )
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 8.dp
+                ) {
+                    items.forEachIndexed { index, item ->
+                        NavigationBarItem(
+                            icon = { Icon(item.icon, contentDescription = item.label) },
+                            label = { Text(item.label) },
+                            selected = selectedItem == index,
+                            onClick = { selectedItem = index },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = MaterialTheme.colorScheme.primary,
+                                selectedTextColor = MaterialTheme.colorScheme.primary,
+                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                indicatorColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                            )
+                        )
+                    }
                 }
             }
         }
     ) { paddingValues ->
-        val modifier = Modifier.padding(paddingValues).fillMaxSize().background(Color(0xFF0F0F1E))
+        val modifier = Modifier.padding(paddingValues).fillMaxSize().background(MaterialTheme.colorScheme.background)
 
         when (selectedItem) {
             0 -> HomeScreen(songViewModel, onSongClick = { song ->
@@ -92,7 +127,6 @@ fun MainScreen(
                 navController.navigate(Screen.Player.route)
             }, modifier = modifier)
             1 -> SearchContent(songViewModel, navController, modifier)
-            // ĐÃ SỬA: Truyền thêm authViewModel vào LibraryContent
             2 -> LibraryContent(songViewModel, navController, modifier, authViewModel)
             3 -> UploadContent(authViewModel, songViewModel, modifier)
         }
@@ -108,16 +142,22 @@ fun SearchContent(viewModel: SongViewModel, navController: NavHostController, mo
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { searchQuery = it; viewModel.searchSongs(it) },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().neumorphic(elevation = 2.dp, cornerRadius = 12.dp),
             placeholder = { Text("Tìm kiếm bài hát...") },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-            shape = RoundedCornerShape(12.dp)
+            shape = RoundedCornerShape(12.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = MaterialTheme.colorScheme.surface,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outline
+            )
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(24.dp))
 
         if (searchQuery.isNotEmpty()) {
-            LazyColumn {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(state.searchResults) { song ->
                     SongItem(song = song, onPlayClick = {
                         viewModel.playSong(song)
@@ -128,8 +168,8 @@ fun SearchContent(viewModel: SongViewModel, navController: NavHostController, mo
         } else {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 item {
                     CategoryCard("Top Tác giả", "") { navController.navigate(Screen.TopArtists.route) }
@@ -144,80 +184,64 @@ fun SearchContent(viewModel: SongViewModel, navController: NavHostController, mo
     }
 }
 
-// --- ĐÃ CẬP NHẬT GIAO DIỆN THƯ VIỆN Ở ĐÂY ---
 @Composable
 fun LibraryContent(
     viewModel: SongViewModel,
     navController: NavHostController,
     modifier: Modifier,
-    authViewModel: AuthViewModel // Nhận authViewModel để lấy UID
+    authViewModel: AuthViewModel
 ) {
     val authState by authViewModel.authState.collectAsState()
     val myUid = authState.user?.uid
-
-    // Lấy danh sách Playlist từ ViewModel
     val myPlaylists by viewModel.myPlaylists.collectAsState()
-
-    // Trạng thái hiển thị hộp thoại tạo Playlist
     var showDialog by remember { mutableStateOf(false) }
     var newPlaylistName by remember { mutableStateOf("") }
     val context = LocalContext.current
 
-    // Vừa vào Thư viện là load danh sách Playlist ngay
     LaunchedEffect(myUid) {
         if (myUid != null) {
             viewModel.loadMyPlaylists(myUid)
         }
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
+    Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
         Text(
             text = "Thư viện của bạn",
-            color = Color.White,
-            fontSize = 24.sp,
+            color = MaterialTheme.colorScheme.onBackground,
+            style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(bottom = 24.dp)
         )
 
-        // 1. NÚT BẤM MỞ DANH SÁCH BÀI HÁT YÊU THÍCH
+        // Favorite Songs Card
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(Color(0xFF1E1E2E))
-                .clickable {
-                    navController.navigate(Screen.FavoriteSongs.route)
-                }
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+                .clickable { navController.navigate(Screen.FavoriteSongs.route) }
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
-                modifier = Modifier.size(50.dp).clip(CircleShape).background(Color(0xFF2C2C3E)),
+                modifier = Modifier.size(56.dp).neumorphic(elevation = 4.dp, cornerRadius = 28.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Filled.Favorite, contentDescription = "Favorite Songs", tint = Color.Red, modifier = Modifier.size(24.dp))
+                Icon(Icons.Filled.Favorite, contentDescription = null, tint = Color.Red, modifier = Modifier.size(28.dp))
             }
-
             Spacer(modifier = Modifier.width(16.dp))
-
             Column {
-                Text("Bài hát yêu thích", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                Text("Danh sách đã thả tim", color = Color.Gray, fontSize = 14.sp)
+                Text("Bài hát yêu thích", color = MaterialTheme.colorScheme.onBackground, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("Danh sách đã thả tim", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
             }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // 2. NÚT TẠO PLAYLIST MỚI
+        // Create Playlist Card
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(Color(0xFF1E1E2E))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
                 .clickable {
                     if (myUid != null) showDialog = true
                     else Toast.makeText(context, "Vui lòng đăng nhập!", Toast.LENGTH_SHORT).show()
@@ -226,48 +250,45 @@ fun LibraryContent(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
-                modifier = Modifier.size(50.dp).clip(CircleShape).background(Color(0xFF2C2C3E)),
+                modifier = Modifier.size(56.dp).neumorphic(elevation = 4.dp, cornerRadius = 28.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.1f)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Filled.Add, contentDescription = "Add Playlist", tint = Color.White, modifier = Modifier.size(24.dp))
+                Icon(Icons.Filled.Add, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(28.dp))
             }
             Spacer(modifier = Modifier.width(16.dp))
-            Text("Tạo danh sách phát mới", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Text("Tạo danh sách phát mới", color = MaterialTheme.colorScheme.onBackground, fontSize = 18.sp, fontWeight = FontWeight.Bold)
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
-        Text("Playlist của bạn", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(32.dp))
+        Text("Playlist của bạn", color = MaterialTheme.colorScheme.onBackground, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(12.dp))
 
-        // 3. DANH SÁCH CÁC PLAYLIST ĐÃ TẠO
-        LazyColumn(modifier = Modifier.weight(1f)) {
+        LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(myPlaylists) { playlist ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 8.dp)
-                        .clickable {
-                            navController.navigate(Screen.PlaylistDetail.createRoute(playlist.playlistId, playlist.name))
-                        },
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+                        .clickable { navController.navigate(Screen.PlaylistDetail.createRoute(playlist.playlistId, playlist.name)) }
+                        .padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(
-                        modifier = Modifier.size(50.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF2C2C3E)),
+                        modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Filled.PlaylistAdd, contentDescription = null, tint = Color.Gray)
+                        Icon(Icons.Filled.PlaylistAdd, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Spacer(modifier = Modifier.width(16.dp))
                     Column {
-                        Text(playlist.name, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        Text("${playlist.songIds.size} bài hát", color = Color.Gray, fontSize = 14.sp)
+                        Text(playlist.name, color = MaterialTheme.colorScheme.onBackground, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text("${playlist.songIds.size} bài hát", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
                     }
                 }
             }
         }
     }
 
-    // 4. HỘP THOẠI NHẬP TÊN PLAYLIST
     if (showDialog) {
         AlertDialog(
             onDismissRequest = { showDialog = false },
@@ -277,32 +298,20 @@ fun LibraryContent(
                     value = newPlaylistName,
                     onValueChange = { newPlaylistName = it },
                     placeholder = { Text("Tên danh sách phát") },
-                    singleLine = true
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp)
                 )
             },
             confirmButton = {
-                TextButton(onClick = {
+                Button(onClick = {
                     if (myUid != null && newPlaylistName.isNotBlank()) {
-                        viewModel.createPlaylist(
-                            userId = myUid,
-                            name = newPlaylistName,
-                            onSuccess = {
-                                showDialog = false
-                                newPlaylistName = ""
-                                Toast.makeText(context, "Tạo thành công!", Toast.LENGTH_SHORT).show()
-                            },
-                            onError = { err ->
-                                Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
-                            }
-                        )
+                        viewModel.createPlaylist(myUid, newPlaylistName, {
+                            showDialog = false; newPlaylistName = ""; Toast.makeText(context, "Tạo thành công!", Toast.LENGTH_SHORT).show()
+                        }, { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() })
                     }
-                }) {
-                    Text("Tạo")
-                }
+                }) { Text("Tạo") }
             },
-            dismissButton = {
-                TextButton(onClick = { showDialog = false }) { Text("Hủy") }
-            }
+            dismissButton = { TextButton(onClick = { showDialog = false }) { Text("Hủy") } }
         )
     }
 }
@@ -319,39 +328,25 @@ fun UploadContent(authViewModel: AuthViewModel, songViewModel: SongViewModel, mo
     var audioUri by remember { mutableStateOf<Uri?>(null) }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
 
-    val audioLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        audioUri = uri
-    }
-
-    val imageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        imageUri = uri
-    }
+    val audioLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { audioUri = it }
+    val imageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { imageUri = it }
 
     Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(24.dp)
-            .verticalScroll(rememberScrollState()),
+        modifier = modifier.fillMaxSize().padding(24.dp).verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text("Đăng tải Bài hát", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(8.dp))
-        Text("Chia sẻ âm nhạc của bạn với mọi người", color = Color.Gray, fontSize = 14.sp)
+        Text("Đăng tải Bài hát", color = MaterialTheme.colorScheme.onBackground, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        Text("Chia sẻ âm nhạc của bạn với mọi người", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
 
         Spacer(modifier = Modifier.height(32.dp))
 
         OutlinedTextField(
             value = title,
             onValueChange = { title = it },
-            label = { Text("Tên bài hát", color = Color.LightGray) },
-            modifier = Modifier.fillMaxWidth(),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
-                focusedBorderColor = Color(0xFF1DB954),
-                unfocusedBorderColor = Color.Gray
-            ),
-            singleLine = true
+            label = { Text("Tên bài hát") },
+            modifier = Modifier.fillMaxWidth().neumorphic(elevation = 2.dp, cornerRadius = 12.dp),
+            shape = RoundedCornerShape(12.dp),
+            colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surface, unfocusedContainerColor = MaterialTheme.colorScheme.surface)
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -359,90 +354,130 @@ fun UploadContent(authViewModel: AuthViewModel, songViewModel: SongViewModel, mo
         OutlinedTextField(
             value = category,
             onValueChange = { category = it },
-            label = { Text("Thể loại (VD: Pop, Lofi, Rap...)", color = Color.LightGray) },
-            modifier = Modifier.fillMaxWidth(),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
-                focusedBorderColor = Color(0xFF1DB954),
-                unfocusedBorderColor = Color.Gray
-            ),
-            singleLine = true
+            label = { Text("Thể loại (VD: Pop, Lofi, Rap...)") },
+            modifier = Modifier.fillMaxWidth().neumorphic(elevation = 2.dp, cornerRadius = 12.dp),
+            shape = RoundedCornerShape(12.dp),
+            colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surface, unfocusedContainerColor = MaterialTheme.colorScheme.surface)
         )
 
         Spacer(modifier = Modifier.height(24.dp))
 
         Button(
             onClick = { imageLauncher.launch("image/*") },
-            modifier = Modifier.fillMaxWidth().height(50.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2A2A3A))
+            modifier = Modifier.fillMaxWidth().height(56.dp).neumorphic(elevation = 4.dp, cornerRadius = 28.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurfaceVariant)
         ) {
-            Text(
-                text = if (imageUri != null) "✅ Đã chọn Ảnh bìa" else "🖼️ Chọn Ảnh bìa (Không bắt buộc)",
-                color = if (imageUri != null) Color(0xFF1DB954) else Color.White
-            )
+            Text(if (imageUri != null) "✅ Đã chọn Ảnh bìa" else "🖼️ Chọn Ảnh bìa")
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
         Button(
             onClick = { audioLauncher.launch("audio/*") },
-            modifier = Modifier.fillMaxWidth().height(50.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2A2A3A))
+            modifier = Modifier.fillMaxWidth().height(56.dp).neumorphic(elevation = 4.dp, cornerRadius = 28.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurfaceVariant)
         ) {
-            Text(
-                text = if (audioUri != null) "✅ Đã chọn file MP3" else "🎵 Chọn file Nhạc (*.mp3)",
-                color = if (audioUri != null) Color(0xFF1DB954) else Color.White
-            )
+            Text(if (audioUri != null) "✅ Đã chọn file MP3" else "🎵 Chọn file Nhạc (*.mp3)")
         }
 
         Spacer(modifier = Modifier.height(40.dp))
 
         if (isUploading) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                CircularProgressIndicator(color = Color(0xFF1DB954))
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("Đang tải lên máy chủ...", color = Color.Gray, fontSize = 12.sp)
-            }
+            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
         } else {
             Button(
                 onClick = {
-                    if (title.isBlank()) {
-                        Toast.makeText(context, "Vui lòng nhập tên bài hát!", Toast.LENGTH_SHORT).show()
+                    if (title.isBlank() || audioUri == null || currentUser == null) {
+                        Toast.makeText(context, "Vui lòng nhập đầy đủ thông tin!", Toast.LENGTH_SHORT).show()
                         return@Button
                     }
-                    if (audioUri == null) {
-                        Toast.makeText(context, "Vui lòng chọn file nhạc MP3!", Toast.LENGTH_SHORT).show()
-                        return@Button
-                    }
-                    if (currentUser == null) {
-                        Toast.makeText(context, "Lỗi: Bạn chưa đăng nhập!", Toast.LENGTH_SHORT).show()
-                        return@Button
-                    }
-
-                    songViewModel.uploadSong(
-                        title = title,
-                        artistId = currentUser.uid,
-                        artistName = currentUser.displayName,
-                        audioUri = audioUri!!,
-                        imageUri = imageUri,
-                        category = category,
-                        onSuccess = {
-                            Toast.makeText(context, "🎉 Đăng tải thành công!", Toast.LENGTH_SHORT).show()
-                            title = ""
-                            category = ""
-                            audioUri = null
-                            imageUri = null
-                        },
-                        onError = { error ->
-                            Toast.makeText(context, "Lỗi: $error", Toast.LENGTH_LONG).show()
-                        }
-                    )
+                    songViewModel.uploadSong(title, currentUser.uid, currentUser.displayName, audioUri!!, imageUri, category, 0, {
+                        Toast.makeText(context, "🎉 Thành công!", Toast.LENGTH_SHORT).show()
+                        title = ""
+                        category = ""
+                        audioUri = null
+                        imageUri = null
+                    }, {
+                        Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+                    })
                 },
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1DB954))
+                modifier = Modifier.fillMaxWidth().height(60.dp).neumorphic(elevation = 8.dp, cornerRadius = 30.dp),
+                shape = RoundedCornerShape(30.dp)
             ) {
-                Text("ĐĂNG TẢI NGAY", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                Text("ĐĂNG TẢI NGAY", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
+fun MiniPlayer(
+    viewModel: SongViewModel,
+    onMiniPlayerClick: () -> Unit
+) {
+    val state by viewModel.songState.collectAsState()
+    val currentSong = state.currentSong ?: return
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .height(64.dp)
+            .neumorphic(elevation = 8.dp, cornerRadius = 12.dp)
+            .clickable { onMiniPlayerClick() },
+        color = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            AsyncImage(
+                model = currentSong.imageUrl,
+                contentDescription = null,
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(8.dp)),
+                contentScale = ContentScale.Crop
+            )
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = currentSong.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = currentSong.artistName,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            IconButton(onClick = { 
+                if (state.isPlaying) viewModel.pauseSong() else viewModel.resumeSong() 
+            }) {
+                Icon(
+                    imageVector = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+
+            IconButton(onClick = { /* Tính năng Skip Next có thể thêm sau */ }) {
+                Icon(
+                    imageVector = Icons.Default.SkipNext,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurface
+                )
             }
         }
     }
@@ -452,22 +487,17 @@ fun UploadContent(authViewModel: AuthViewModel, songViewModel: SongViewModel, mo
 fun CategoryCard(name: String, imageUrl: String, onClick: () -> Unit) {
     Box(
         modifier = Modifier
-            .height(100.dp)
+            .height(110.dp)
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(Color(0xFF1E1E2E))
+            .neumorphic(elevation = 4.dp, cornerRadius = 16.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
             .clickable { onClick() },
         contentAlignment = Alignment.Center
     ) {
         if (imageUrl.isNotEmpty()) {
-            AsyncImage(
-                model = imageUrl,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                alpha = 0.5f
-            )
+            AsyncImage(model = imageUrl, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop, alpha = 0.4f)
         }
-        Text(name, color = Color.White, fontWeight = FontWeight.Bold)
+        Text(name, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold, fontSize = 16.sp)
     }
 }

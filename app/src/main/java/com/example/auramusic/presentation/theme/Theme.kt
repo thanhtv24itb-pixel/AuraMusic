@@ -59,11 +59,18 @@ private val LightColorScheme = lightColorScheme(
     outline = TextSecondaryLight
 )
 
+enum class ThemeMode { LIGHT, DARK, SYSTEM }
+
 @Composable
 fun AuraMusicTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    themeMode: ThemeMode = ThemeMode.SYSTEM,
     content: @Composable () -> Unit
 ) {
+    val darkTheme = when (themeMode) {
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+    }
     val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
 
     MaterialTheme(

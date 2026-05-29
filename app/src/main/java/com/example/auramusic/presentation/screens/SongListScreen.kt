@@ -10,7 +10,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.auramusic.domain.model.Song
@@ -33,14 +32,14 @@ fun SongListScreen(
                     IconButton(onClick = onBackClick) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = Color.White
+                            contentDescription = "Back"
                         )
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = Color(0xFF0F0F1E),
-                    titleContentColor = Color.White
+                    containerColor = MaterialTheme.colorScheme.background,
+                    titleContentColor = MaterialTheme.colorScheme.onBackground,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onBackground
                 )
             )
         }
@@ -49,7 +48,7 @@ fun SongListScreen(
             modifier = modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .background(Color(0xFF0F0F1E))
+                .background(MaterialTheme.colorScheme.background)
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -61,7 +60,7 @@ fun SongListScreen(
                         modifier = Modifier.fillParentMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("Không có bài hát nào", color = Color.Gray)
+                        Text("Không có bài hát nào", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             } else {

@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.auramusic.domain.model.Category
 import com.example.auramusic.domain.model.Playlist
 import com.example.auramusic.domain.model.Song
+import com.example.auramusic.domain.model.Comment
 import com.example.auramusic.domain.repository.SongRepository
 import com.example.auramusic.domain.usecase.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,6 +25,7 @@ data class SongUiState(
     val currentPosition: Int = 0,
     val error: String? = null,
     val isCurrentSongLiked: Boolean = false,
+    val comments: List<Comment> = emptyList(),
 )
 
 class SongViewModel(
@@ -237,6 +239,28 @@ class SongViewModel(
             }.onFailure {
                 _playlistSongs.value = emptyList()
             }
+        }
+    }
+
+    // Comments Section
+    fun loadComments(songId: String) {
+        viewModelScope.launch {
+            songRepository.getComments(songId).collect { comments ->
+                _songState.value = _songState.value.copy(comments = comments)
+            }
+        }
+    }
+
+    fun addComment(
+        songId: String,
+        userId: String,
+        userName: String,
+        userAvatar: String,
+        content: String
+    ) {
+        if (content.isBlank()) return
+        viewModelScope.launch {
+            songRepository.addComment(songId, userId, userName, userAvatar, content)
         }
     }
 }

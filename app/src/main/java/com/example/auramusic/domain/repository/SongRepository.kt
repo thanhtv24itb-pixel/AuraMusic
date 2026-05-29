@@ -4,6 +4,7 @@ import android.net.Uri
 import com.example.auramusic.domain.model.Song
 import com.example.auramusic.domain.model.Category
 import com.example.auramusic.domain.model.Playlist
+import com.example.auramusic.domain.model.Comment
 import kotlinx.coroutines.flow.Flow
 
 interface SongRepository {
@@ -38,4 +39,8 @@ interface SongRepository {
     suspend fun getUserPlaylists(userId: String): Result<List<Playlist>>
     suspend fun addSongToPlaylist(playlistId: String, songId: String): Result<Boolean>
     suspend fun getSongsInPlaylist(playlistId: String): Result<List<Song>>
+
+    // Comments
+    suspend fun addComment(songId: String, userId: String, userName: String, userAvatar: String, content: String): Result<Unit>
+    fun getComments(songId: String): Flow<List<Comment>>
 }

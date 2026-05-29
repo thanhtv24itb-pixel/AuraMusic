@@ -23,6 +23,8 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.auramusic.domain.model.Song
 import com.example.auramusic.presentation.components.SongItem
+import com.example.auramusic.presentation.components.glassmorphism
+import com.example.auramusic.presentation.components.neumorphic
 import com.example.auramusic.presentation.viewmodel.SongViewModel
 
 @Composable
@@ -109,36 +111,34 @@ fun SectionTitle(title: String) {
 
 @Composable
 fun HomeSongCard(song: Song, onClick: () -> Unit) {
-    Card(
+    Column(
         modifier = Modifier
             .width(160.dp)
-            .clickable { onClick() },
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            .clickable { onClick() }
+            .padding(8.dp)
     ) {
-        Column {
-            AsyncImage(
-                model = song.imageUrl,
-                contentDescription = null,
-                modifier = Modifier
-                    .size(160.dp)
-                    .clip(RoundedCornerShape(20.dp)),
-                contentScale = ContentScale.Crop
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                text = song.title,
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onBackground,
-                maxLines = 1,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = song.artistName,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1
-            )
-        }
+        AsyncImage(
+            model = song.imageUrl,
+            contentDescription = null,
+            modifier = Modifier
+                .size(144.dp)
+                .neumorphic(elevation = 8.dp, cornerRadius = 20.dp)
+                .clip(RoundedCornerShape(20.dp)),
+            contentScale = ContentScale.Crop
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        Text(
+            text = song.title,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onBackground,
+            maxLines = 1,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            text = song.artistName,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1
+        )
     }
 }

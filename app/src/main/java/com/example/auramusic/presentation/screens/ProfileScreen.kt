@@ -51,20 +51,23 @@ fun ProfileScreen(
             topBar = {
                 TopAppBar(
                     title = { Text("Trang cá nhân") },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF0F0F1E), titleContentColor = Color.White)
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        titleContentColor = MaterialTheme.colorScheme.onSurface
+                    )
                 )
             }
         ) { paddingValues ->
             Column(
-                modifier = Modifier.fillMaxSize().background(Color(0xFF0F0F1E)).padding(paddingValues),
+                modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(paddingValues),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                Icon(Icons.Default.AccountCircle, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(100.dp))
+                Icon(Icons.Default.AccountCircle, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(100.dp))
                 Spacer(modifier = Modifier.height(16.dp))
-                Text("Bạn chưa đăng nhập", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                Text("Bạn chưa đăng nhập", color = MaterialTheme.colorScheme.onBackground, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("Đăng nhập để xem hồ sơ và bài hát của bạn", color = Color.Gray, fontSize = 14.sp)
+                Text("Đăng nhập để xem hồ sơ và bài hát của bạn", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
                 Spacer(modifier = Modifier.height(24.dp))
 
                 Button(
@@ -105,19 +108,23 @@ fun ProfileScreen(
                         }
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF0F0F1E), titleContentColor = Color.White, navigationIconContentColor = Color.White)
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface
+                )
             )
         }
     ) { paddingValues ->
         if (user == null) {
-            Box(modifier = Modifier.fillMaxSize().background(Color(0xFF0F0F1E)), contentAlignment = Alignment.Center) {
+            Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
             }
             return@Scaffold
         }
 
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(paddingValues).background(Color(0xFF0F0F1E)).padding(16.dp),
+            modifier = Modifier.fillMaxSize().padding(paddingValues).background(MaterialTheme.colorScheme.background).padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             item {
@@ -128,9 +135,9 @@ fun ProfileScreen(
                     contentScale = ContentScale.Crop
                 )
                 Spacer(modifier = Modifier.height(16.dp))
-                Text(user?.displayName ?: "Người dùng", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                Text(user?.displayName ?: "Người dùng", color = MaterialTheme.colorScheme.onBackground, fontSize = 22.sp, fontWeight = FontWeight.Bold)
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(24.dp))
 
                 if (!isMyProfile) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
@@ -159,12 +166,12 @@ fun ProfileScreen(
                     ProfileStat("Followers", user?.followerCount ?: 0)
                 }
                 Spacer(modifier = Modifier.height(32.dp))
-                Text(if (isMyProfile) "Bài hát của tôi" else "Bài hát của tác giả", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth())
+                Text(if (isMyProfile) "Bài hát của tôi" else "Bài hát của tác giả", color = MaterialTheme.colorScheme.onBackground, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth())
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
             if (profileSongs.isEmpty()) {
-                item { Text("Chưa có bài hát nào", color = Color.Gray, modifier = Modifier.padding(top = 20.dp)) }
+                item { Text("Chưa có bài hát nào", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 20.dp)) }
             } else {
                 items(profileSongs) { song ->
                     SongItem(song = song, onPlayClick = { songViewModel.playSong(song) })
@@ -177,7 +184,7 @@ fun ProfileScreen(
 @Composable
 fun ProfileStat(label: String, value: Int) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(text = value.toString(), color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-        Text(text = label, color = Color.Gray, fontSize = 12.sp)
+        Text(text = value.toString(), color = MaterialTheme.colorScheme.onBackground, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Text(text = label, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
     }
 }

@@ -10,7 +10,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.auramusic.presentation.components.SongItem
@@ -26,11 +25,8 @@ fun FavoriteSongsScreen(
 ) {
     val authState by authViewModel.authState.collectAsState()
     val myUid = authState.user?.uid
-
-    // Lấy dữ liệu từ StateFlow
     val favoriteSongs by songViewModel.favoriteSongs.collectAsState()
 
-    // Vừa vào trang là ra lệnh tải dữ liệu ngay
     LaunchedEffect(myUid) {
         if (myUid != null) {
             songViewModel.loadFavoriteSongs(myUid)
@@ -47,9 +43,9 @@ fun FavoriteSongsScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFF0F0F1E),
-                    titleContentColor = Color.White,
-                    navigationIconContentColor = Color.White
+                    containerColor = MaterialTheme.colorScheme.background,
+                    titleContentColor = MaterialTheme.colorScheme.onBackground,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onBackground
                 )
             )
         }
@@ -57,32 +53,31 @@ fun FavoriteSongsScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFF0F0F1E))
+                .background(MaterialTheme.colorScheme.background)
                 .padding(paddingValues)
         ) {
             if (myUid == null) {
                 Text(
                     "Vui lòng đăng nhập để xem danh sách",
-                    color = Color.Gray,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.align(Alignment.Center)
                 )
             } else if (favoriteSongs.isEmpty()) {
                 Text(
                     "Bạn chưa thích bài hát nào",
-                    color = Color.Gray,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.align(Alignment.Center)
                 )
             } else {
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     item { Spacer(modifier = Modifier.height(16.dp)) }
-
                     items(favoriteSongs) { song ->
-                        SongItem(song = song, onPlayClick = {
-                            songViewModel.playSong(song)
-                        })
+                        SongItem(song = song, onPlayClick = { songViewModel.playSong(song) })
                     }
+                    item { Spacer(modifier = Modifier.height(16.dp)) }
                 }
             }
         }
