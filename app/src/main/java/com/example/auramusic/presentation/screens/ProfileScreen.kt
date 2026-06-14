@@ -1,15 +1,18 @@
 package com.example.auramusic.presentation.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.ThumbUp
+import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -35,7 +38,8 @@ fun ProfileScreen(
     userViewModel: UserViewModel,
     songViewModel: SongViewModel,
     onBackClick: () -> Unit,
-    onLogoutClick: () -> Unit // Ta sẽ tận dụng luôn hàm này để quay về trang Login
+    onLogoutClick: () -> Unit,
+    onNavigateToPremium: () -> Unit = {} // THÊM DÒNG NÀY ĐỂ CHUYỂN TRANG MUA VIP
 ) {
     val authState by authViewModel.authState.collectAsState()
     val myUid = authState.user?.uid
@@ -71,14 +75,14 @@ fun ProfileScreen(
                 Spacer(modifier = Modifier.height(24.dp))
 
                 Button(
-                    onClick = onLogoutClick, // Tận dụng lệnh này vì trong NavGraph nó vốn dĩ có lệnh chuyển về trang Login!
+                    onClick = onLogoutClick,
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                 ) {
                     Text("Đăng nhập ngay")
                 }
             }
         }
-        return // Dừng vẽ giao diện ở đây, không chạy xuống code bên dưới nữa
+        return
     }
     // =========================================================================
 
@@ -128,16 +132,67 @@ fun ProfileScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             item {
+                // 1. GẮN VIỀN VÀNG CHO AVATAR NẾU LÀ VIP
+                val avatarModifier = Modifier
+                    .size(100.dp)
+                    .clip(CircleShape)
+                    .then(
+                        if (user?.premium == true) Modifier.border(3.dp, Color(0xFFFFD700), CircleShape)
+                        else Modifier
+                    )
+
                 AsyncImage(
                     model = user?.avatarUrl?.ifBlank { "https://cdn-icons-png.flaticon.com/512/149/149071.png" },
                     contentDescription = null,
-                    modifier = Modifier.size(100.dp).clip(CircleShape),
+                    modifier = avatarModifier,
                     contentScale = ContentScale.Crop
                 )
                 Spacer(modifier = Modifier.height(16.dp))
-                Text(user?.displayName ?: "Người dùng", color = MaterialTheme.colorScheme.onBackground, fontSize = 22.sp, fontWeight = FontWeight.Bold)
 
-                Spacer(modifier = Modifier.height(24.dp))
+                // 2. GẮN HUY HIỆU PREMIUM BÊN CẠNH TÊN
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                    Text(user?.displayName ?: "Người dùng", color = MaterialTheme.colorScheme.onBackground, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+
+                    if (user?.premium == true) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Box(
+                            modifier = Modifier
+                                .background(Color(0xFFFFD700), RoundedCornerShape(6.dp))
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.WorkspacePremium, contentDescription = "VIP", tint = Color.Black, modifier = Modifier.size(12.dp))
+                                Spacer(modifier = Modifier.width(2.dp))
+                                Text("PREMIUM", color = Color.Black, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold)
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 3. NÚT NÂNG CẤP VIP DÀNH CHO CHỦ SỞ HỮU TRANG (NẾU CHƯA LÀ VIP)
+                if (isMyProfile) {
+                    if (user?.premium == true) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.WorkspacePremium, contentDescription = null, tint = Color(0xFFFFD700))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Thành viên VIP", color = Color(0xFFFFD700), fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                    } else {
+                        Button(
+                            onClick = onNavigateToPremium,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFD700), contentColor = Color.Black)
+                        ) {
+                            Icon(Icons.Default.WorkspacePremium, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Nâng cấp Premium", fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+                }
 
                 if (!isMyProfile) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {

@@ -7,10 +7,11 @@ data class User(
     val email: String = "",
     val displayName: String = "",
     val avatarUrl: String = "",
-    val isPremium: Boolean = false,
+    val premium: Boolean = false,
     val uploadedCount: Int = 0,
     val totalLikesReceived: Int = 0,
     val totalPlays: Int = 0,
     val followerCount: Int = 0,
-    val createdAt: Timestamp? = null
+    val createdAt: Timestamp? = null,
+    val role: String = "user"
 )

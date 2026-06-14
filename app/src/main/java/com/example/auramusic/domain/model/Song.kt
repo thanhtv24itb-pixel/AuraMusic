@@ -11,5 +11,7 @@ data class Song(
     val duration: Int = 0, // Thời lượng tính bằng giây
     val playCount: Int = 0,
     val likeCount: Int = 0,
-    val createdAt: Long = 0L
+    val createdAt: Long = 0L,
+    val status: String = "pending"
+
 )

@@ -30,6 +30,10 @@ sealed class Screen(val route: String) {
     object PlaylistDetail : Screen("playlist_detail/{playlistId}/{playlistName}") {
         fun createRoute(playlistId: String, playlistName: String) = "playlist_detail/$playlistId/$playlistName"
     }
+
+    object History : Screen("history")
+    object Premium : Screen("premium")
+    object AdminDashboard : Screen("admin_dashboard") // Đã có sẵn, rất tốt
 }
 
 @Composable
@@ -40,14 +44,16 @@ fun NavGraph(
     userViewModel: UserViewModel,
     themeViewModel: ThemeViewModel,
     exoPlayer: ExoPlayer,
-
     isUserLoggedIn: Boolean
 ) {
-    val startDestination = if (isUserLoggedIn) Screen.Main.route else Screen.Login.route
-
-    // Lấy UID của bạn để truyền vào Profile
+    // 1. LẤY EMAIL CỦA USER ĐANG ĐĂNG NHẬP
     val authState by authViewModel.authState.collectAsState()
     val myUid = authState.user?.uid ?: ""
+    val currentUserEmail = authState.user?.email ?: ""
+
+    // 2. CHỈNH SỬA ĐIỂM BẮT ĐẦU: XÉT ĐIỀU KIỆN EMAIL ADMIN
+    val startDestination = Screen.Login.route
+
 
     NavHost(
         navController = navController,
@@ -57,8 +63,36 @@ fun NavGraph(
             LoginScreen(
                 viewModel = authViewModel,
                 onLoginSuccess = {
-                    navController.navigate(Screen.Main.route) {
-                        popUpTo(Screen.Login.route) { inclusive = true }
+                    // 1. Lấy UID của user vừa đăng nhập xong
+                    val uid = authViewModel.authState.value.user?.uid ?: ""
+
+                    if (uid.isNotEmpty()) {
+                        // 2. Chọc thẳng lên Firestore để đọc trường "role" thực tế
+                        com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                            .collection("users")
+                            .document(uid)
+                            .get()
+                            .addOnSuccessListener { document ->
+                                // Lấy chuỗi role về, nếu trên firebase trống thì mặc định là "user"
+                                val role = document.getString("role") ?: "user"
+
+                                // 3. Phân luồng dựa theo Role thực tế trên Database
+                                if (role == "admin") {
+                                    navController.navigate(Screen.AdminDashboard.route) {
+                                        popUpTo(Screen.Login.route) { inclusive = true }
+                                    }
+                                } else {
+                                    navController.navigate(Screen.Main.route) {
+                                        popUpTo(Screen.Login.route) { inclusive = true }
+                                    }
+                                }
+                            }
+                            .addOnFailureListener {
+                                // Lỡ lỗi mạng không đọc được database thì cho vào trang chính user luôn
+                                navController.navigate(Screen.Main.route) {
+                                    popUpTo(Screen.Login.route) { inclusive = true }
+                                }
+                            }
                     }
                 },
                 onNavigateToSignup = { navController.navigate(Screen.Signup.route) }
@@ -122,7 +156,6 @@ fun NavGraph(
             )
         }
 
-        // --- MỞ TRANG CỦA CHÍNH MÌNH ---
         composable(Screen.Profile.route) {
             ProfileScreen(
                 userId = myUid,
@@ -135,11 +168,13 @@ fun NavGraph(
                     navController.navigate(Screen.Login.route) {
                         popUpTo(Screen.Main.route) { inclusive = true }
                     }
+                },
+                onNavigateToPremium = {
+                    navController.navigate(Screen.Premium.route)
                 }
             )
         }
 
-        // --- MỞ TRANG CỦA TÁC GIẢ KHÁC ---
         composable(
             route = Screen.ArtistProfile.route,
             arguments = listOf(navArgument("artistId") { type = NavType.StringType })
@@ -151,11 +186,10 @@ fun NavGraph(
                 userViewModel = userViewModel,
                 songViewModel = songViewModel,
                 onBackClick = { navController.popBackStack() },
-                onLogoutClick = {} // Trống vì nút đăng xuất bị ẩn ở trang người khác
+                onLogoutClick = {}
             )
         }
 
-        // --- MÀN HÌNH BÀI HÁT YÊU THÍCH ---
         composable(Screen.FavoriteSongs.route) {
             FavoriteSongsScreen(
                 authViewModel = authViewModel,
@@ -163,6 +197,7 @@ fun NavGraph(
                 onBackClick = { navController.popBackStack() }
             )
         }
+
         composable(
             route = Screen.PlaylistDetail.route,
             arguments = listOf(
@@ -182,6 +217,29 @@ fun NavGraph(
                     songViewModel.playSong(song)
                     navController.navigate(Screen.Player.route)
                 }
+            )
+        }
+
+        composable(Screen.History.route) {
+            HistoryScreen(
+                viewModel = songViewModel,
+                authViewModel = authViewModel,
+                onBackClick = { navController.popBackStack() }
+            )
+        }
+
+        composable(Screen.Premium.route) {
+            PremiumScreen(
+                navController = navController,
+                authViewModel = authViewModel
+            )
+        }
+
+        // 4. THÊM GIAO DIỆN ADMIN VÀO ĐÂY
+        composable(Screen.AdminDashboard.route) {
+            AdminMainScreen(
+                navController = navController,
+                authViewModel = authViewModel
             )
         }
     }

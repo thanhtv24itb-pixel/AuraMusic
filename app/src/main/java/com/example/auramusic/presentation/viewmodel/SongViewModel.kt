@@ -9,6 +9,8 @@ import com.example.auramusic.domain.model.Song
 import com.example.auramusic.domain.model.Comment
 import com.example.auramusic.domain.repository.SongRepository
 import com.example.auramusic.domain.usecase.*
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -25,7 +27,7 @@ data class SongUiState(
     val currentPosition: Int = 0,
     val error: String? = null,
     val isCurrentSongLiked: Boolean = false,
-    val comments: List<Comment> = emptyList(),
+    val comments: List<Comment> = emptyList()
 )
 
 class SongViewModel(
@@ -36,7 +38,7 @@ class SongViewModel(
     private val getSongsByCategoryUseCase: GetSongsByCategoryUseCase,
     private val uploadSongUseCase: UploadSongUseCase,
     private val toggleLikeUseCase: ToggleLikeUseCase,
-    private val songRepository: SongRepository // Đã xóa biến _favoriteSongs khỏi đây
+    private val songRepository: SongRepository
 ) : ViewModel() {
 
     private val _songState = MutableStateFlow(SongUiState())
@@ -45,14 +47,24 @@ class SongViewModel(
     private val _isUploading = MutableStateFlow(false)
     val isUploading: StateFlow<Boolean> = _isUploading
 
-    // --- ĐÃ SỬA: Đưa _favoriteSongs vào trong thân class ---
     private val _favoriteSongs = MutableStateFlow<List<Song>>(emptyList())
     val favoriteSongs: StateFlow<List<Song>> = _favoriteSongs
+
     private val _myPlaylists = MutableStateFlow<List<Playlist>>(emptyList())
     val myPlaylists: StateFlow<List<Playlist>> = _myPlaylists
 
     private val _playlistSongs = MutableStateFlow<List<Song>>(emptyList())
     val playlistSongs: StateFlow<List<Song>> = _playlistSongs
+
+    // Biến lưu danh sách Lịch sử nghe nhạc
+    private val _recentlyPlayedSongs = MutableStateFlow<List<Song>>(emptyList())
+    val recentlyPlayedSongs: StateFlow<List<Song>> = _recentlyPlayedSongs
+
+    // --- CÁC BIẾN QUẢN LÝ TĂNG VIEW & HẸN GIỜ ---
+    private var hasCountedViewAndHistory = false
+    private var sleepTimerJob: Job? = null
+    var stopAfterCurrentSong = false
+        private set
 
     init {
         loadHomeData()
@@ -64,7 +76,6 @@ class SongViewModel(
             _songState.value = _songState.value.copy(isLoading = true)
             val mostPlayed = getMostPlayedSongsUseCase()
             val recent = getRecentSongsUseCase()
-
             _songState.value = _songState.value.copy(
                 mostPlayedSongs = mostPlayed.getOrDefault(emptyList()),
                 recentSongs = recent.getOrDefault(emptyList()),
@@ -102,12 +113,15 @@ class SongViewModel(
         }
     }
 
+    // --- LOGIC PHÁT NHẠC VÀ THEO DÕI TIẾN ĐỘ ---
     fun playSong(song: Song) {
         _songState.value = _songState.value.copy(
             currentSong = song,
             isPlaying = true,
             currentPosition = 0
         )
+        // Reset cờ khi người dùng bấm nghe bài hát mới
+        hasCountedViewAndHistory = false
     }
 
     fun pauseSong() {
@@ -118,40 +132,90 @@ class SongViewModel(
         _songState.value = _songState.value.copy(isPlaying = true)
     }
 
-    fun updateProgress(position: Int) {
-        _songState.value = _songState.value.copy(currentPosition = position)
+    fun updateProgress(positionInSeconds: Int, currentUserId: String?) {
+        _songState.value = _songState.value.copy(currentPosition = positionInSeconds)
+
+        // Tính năng: Lớn hơn hoặc bằng 10 giây sẽ cộng view và lưu lịch sử
+        if (positionInSeconds >= 10 && !hasCountedViewAndHistory) {
+            hasCountedViewAndHistory = true
+            val currentSong = _songState.value.currentSong
+
+            if (currentSong != null) {
+                viewModelScope.launch {
+                    // 1. Tăng lượt nghe (View)
+                    songRepository.incrementPlayCount(currentSong.songId, currentSong.artistId)
+
+                    // 2. LƯU LỊCH SỬ NGHE NHẠC (Đoạn bạn bị thiếu)
+                    if (currentUserId != null) {
+                        songRepository.addToHistory(currentUserId, currentSong.songId)
+                    }
+                }
+            }
+        }
+    }
+
+    // --- LOGIC KHI BÀI HÁT KẾT THÚC ---
+    fun handleSongEnded() {
+        // ĐÃ SỬA: Reset lại cờ khi hết bài. Để nếu bài tự phát lại (Loop) thì tính 1 lượt nghe mới.
+        hasCountedViewAndHistory = false
+
+        if (stopAfterCurrentSong) {
+            pauseSong()
+            updateProgress(0, null)
+            stopAfterCurrentSong = false // Tắt hẹn giờ đi
+        } else {
+            // Logic chuyển bài (ví dụ Auto-next hoặc Lặp lại tùy bạn phát triển sau)
+            pauseSong()
+            updateProgress(0, null)
+        }
+    }
+
+    // --- LOGIC HẸN GIỜ TẮT NHẠC ---
+    fun startSleepTimerByMinutes(minutes: Int) {
+        cancelSleepTimer()
+        if (minutes <= 0) return
+        sleepTimerJob = viewModelScope.launch {
+            delay(minutes * 60 * 1000L)
+            pauseSong()
+        }
+    }
+
+    fun setStopAfterCurrentSong() {
+        cancelSleepTimer()
+        stopAfterCurrentSong = true
+    }
+
+    fun cancelSleepTimer() {
+        sleepTimerJob?.cancel()
+        stopAfterCurrentSong = false
+    }
+
+    // --- CÁC HÀM LIÊN QUAN ĐẾN USER, LỊCH SỬ & PLAYLIST ---
+    fun loadRecentlyPlayed(userId: String) {
+        viewModelScope.launch {
+            songRepository.getRecentlyPlayed(userId).onSuccess { songs ->
+                _recentlyPlayedSongs.value = songs
+            }.onFailure {
+                _recentlyPlayedSongs.value = emptyList()
+            }
+        }
     }
 
     fun uploadSong(
-        title: String,
-        artistId: String,
-        artistName: String,
-        audioUri: Uri,
-        imageUri: Uri?,
-        category: String,
-        duration: Int = 0,
-        onSuccess: () -> Unit,
-        onError: (String) -> Unit
+        title: String, artistId: String, artistName: String, audioUri: Uri, imageUri: Uri?,
+        category: String, duration: Int = 0, onSuccess: () -> Unit, onError: (String) -> Unit
     ) {
         viewModelScope.launch {
             _isUploading.value = true
-
             val result = uploadSongUseCase(
-                title = title,
-                artistId = artistId,
-                artistName = artistName,
-                audioUri = audioUri,
-                imageUri = imageUri,
-                category = category,
-                duration = duration
+                title, artistId, artistName, audioUri, imageUri, category, duration
             )
-
             result.onSuccess {
                 _isUploading.value = false
                 onSuccess()
             }.onFailure { error ->
                 _isUploading.value = false
-                onError(error.message ?: "Có lỗi xảy ra khi tải bài hát")
+                onError(error.message ?: "Có lỗi xảy ra khi tải bài hát lên")
             }
         }
     }
@@ -186,7 +250,7 @@ class SongViewModel(
             }
         }
     }
-    // Load tất cả Playlist của mình về máy
+
     fun loadMyPlaylists(userId: String) {
         viewModelScope.launch {
             songRepository.getUserPlaylists(userId).onSuccess { playlists ->
@@ -197,7 +261,6 @@ class SongViewModel(
         }
     }
 
-    // Tạo Playlist mới
     fun createPlaylist(userId: String, name: String, onSuccess: () -> Unit, onError: (String) -> Unit) {
         if (name.isBlank()) {
             onError("Tên playlist không được để trống")
@@ -205,33 +268,29 @@ class SongViewModel(
         }
         viewModelScope.launch {
             songRepository.createPlaylist(userId, name).onSuccess {
-                // Tạo xong thì load lại danh sách để màn hình tự cập nhật
                 loadMyPlaylists(userId)
                 onSuccess()
             }.onFailure { e ->
-                onError(e.message ?: "Lỗi tạo Playlist")
+                onError(e.message ?: "Lỗi khi tạo Playlist")
             }
         }
     }
 
-    // Thêm bài hát đang nghe vào Playlist
     fun addCurrentSongToPlaylist(playlistId: String, onSuccess: () -> Unit, onError: (String) -> Unit) {
         val currentSongId = _songState.value.currentSong?.songId
         if (currentSongId == null) {
             onError("Không có bài hát nào đang phát")
             return
         }
-
         viewModelScope.launch {
             songRepository.addSongToPlaylist(playlistId, currentSongId).onSuccess {
                 onSuccess()
             }.onFailure { e ->
-                onError(e.message ?: "Lỗi thêm bài hát")
+                onError(e.message ?: "Lỗi khi thêm bài hát")
             }
         }
     }
 
-    // Load các bài hát nằm trong 1 Playlist khi người dùng bấm vào xem
     fun loadSongsInPlaylist(playlistId: String) {
         viewModelScope.launch {
             songRepository.getSongsInPlaylist(playlistId).onSuccess { songs ->
@@ -242,7 +301,6 @@ class SongViewModel(
         }
     }
 
-    // Comments Section
     fun loadComments(songId: String) {
         viewModelScope.launch {
             songRepository.getComments(songId).collect { comments ->
@@ -251,13 +309,7 @@ class SongViewModel(
         }
     }
 
-    fun addComment(
-        songId: String,
-        userId: String,
-        userName: String,
-        userAvatar: String,
-        content: String
-    ) {
+    fun addComment(songId: String, userId: String, userName: String, userAvatar: String, content: String) {
         if (content.isBlank()) return
         viewModelScope.launch {
             songRepository.addComment(songId, userId, userName, userAvatar, content)

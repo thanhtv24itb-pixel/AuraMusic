@@ -1,3 +1,4 @@
+
 package com.example.auramusic.presentation.screens
 
 import android.net.Uri
@@ -39,6 +40,7 @@ import com.example.auramusic.presentation.components.neumorphic
 import com.example.auramusic.presentation.navigation.Screen
 import com.example.auramusic.presentation.theme.ThemeMode
 import com.example.auramusic.presentation.viewmodel.*
+import kotlinx.coroutines.delay
 
 sealed class BottomNavItem(val route: String, val icon: ImageVector, val label: String) {
     object Home : BottomNavItem("home", Icons.Default.Home, "Trang chủ")
@@ -94,6 +96,7 @@ fun MainScreen(
             Column {
                 MiniPlayer(
                     viewModel = songViewModel,
+                    currentUser = authViewModel.authState.collectAsState().value.user, // Truyền user vào đây
                     onMiniPlayerClick = { navController.navigate(Screen.Player.route) }
                 )
                 NavigationBar(
@@ -119,7 +122,10 @@ fun MainScreen(
             }
         }
     ) { paddingValues ->
-        val modifier = Modifier.padding(paddingValues).fillMaxSize().background(MaterialTheme.colorScheme.background)
+        val modifier = Modifier
+            .padding(paddingValues)
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
 
         when (selectedItem) {
             0 -> HomeScreen(songViewModel, onSongClick = { song ->
@@ -128,7 +134,11 @@ fun MainScreen(
             }, modifier = modifier)
             1 -> SearchContent(songViewModel, navController, modifier)
             2 -> LibraryContent(songViewModel, navController, modifier, authViewModel)
-            3 -> UploadContent(authViewModel, songViewModel, modifier)
+            3 -> UploadContent(
+                authViewModel = authViewModel,
+                songViewModel = songViewModel,
+                modifier = modifier,
+                onNavigateToPremium = { navController.navigate(Screen.Premium.route) })
         }
     }
 }
@@ -141,31 +151,55 @@ fun SearchContent(viewModel: SongViewModel, navController: NavHostController, mo
     Column(modifier = modifier.padding(16.dp)) {
         OutlinedTextField(
             value = searchQuery,
-            onValueChange = { searchQuery = it; viewModel.searchSongs(it) },
-            modifier = Modifier.fillMaxWidth().neumorphic(elevation = 2.dp, cornerRadius = 12.dp),
+            onValueChange = {
+                searchQuery = it
+                viewModel.searchSongs(it)
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .neumorphic(elevation = 2.dp, cornerRadius = 12.dp),
             placeholder = { Text("Tìm kiếm bài hát...") },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+            // NÚT CLEAR (Dấu X) ĐỂ XÓA NHANH
+            trailingIcon = {
+                if (searchQuery.isNotEmpty()) {
+                    IconButton(onClick = {
+                        searchQuery = ""
+                        viewModel.searchSongs("")
+                    }) {
+                        Icon(Icons.Default.Clear, contentDescription = "Xóa")
+                    }
+                }
+            },
             shape = RoundedCornerShape(12.dp),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedContainerColor = MaterialTheme.colorScheme.surface,
                 unfocusedContainerColor = MaterialTheme.colorScheme.surface,
                 focusedBorderColor = MaterialTheme.colorScheme.primary,
                 unfocusedBorderColor = MaterialTheme.colorScheme.outline
-            )
+            ),
+            singleLine = true
         )
 
         Spacer(modifier = Modifier.height(24.dp))
 
         if (searchQuery.isNotEmpty()) {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(state.searchResults) { song ->
-                    SongItem(song = song, onPlayClick = {
-                        viewModel.playSong(song)
-                        navController.navigate(Screen.Player.route)
-                    })
+            if (state.searchResults.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("Không tìm thấy kết quả phù hợp", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            } else {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(state.searchResults) { song ->
+                        SongItem(song = song, onPlayClick = {
+                            viewModel.playSong(song)
+                            navController.navigate(Screen.Player.route)
+                        })
+                    }
                 }
             }
         } else {
+            // Hiển thị danh mục khi chưa gõ tìm kiếm
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -204,7 +238,9 @@ fun LibraryContent(
         }
     }
 
-    Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
+    Column(modifier = modifier
+        .fillMaxSize()
+        .padding(16.dp)) {
         Text(
             text = "Thư viện của bạn",
             color = MaterialTheme.colorScheme.onBackground,
@@ -217,13 +253,20 @@ fun LibraryContent(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+                .background(
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                    RoundedCornerShape(16.dp)
+                )
                 .clickable { navController.navigate(Screen.FavoriteSongs.route) }
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
-                modifier = Modifier.size(56.dp).neumorphic(elevation = 4.dp, cornerRadius = 28.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+                modifier = Modifier
+                    .size(56.dp)
+                    .neumorphic(elevation = 4.dp, cornerRadius = 28.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(Icons.Filled.Favorite, contentDescription = null, tint = Color.Red, modifier = Modifier.size(28.dp))
@@ -234,6 +277,29 @@ fun LibraryContent(
                 Text("Danh sách đã thả tim", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
             }
         }
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // LỊCH SỬ NGHE NHẠC
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                    RoundedCornerShape(16.dp)
+                )
+                .clickable { navController.navigate(Screen.History.route) }
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(modifier = Modifier
+                .size(56.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.tertiary.copy(alpha = 0.1f)), contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.History, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(28.dp))
+            }
+            Spacer(modifier = Modifier.width(16.dp))
+            Text("Lịch sử nghe gần đây", color = MaterialTheme.colorScheme.onBackground, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        }
 
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -241,7 +307,10 @@ fun LibraryContent(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+                .background(
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                    RoundedCornerShape(16.dp)
+                )
                 .clickable {
                     if (myUid != null) showDialog = true
                     else Toast.makeText(context, "Vui lòng đăng nhập!", Toast.LENGTH_SHORT).show()
@@ -250,7 +319,11 @@ fun LibraryContent(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
-                modifier = Modifier.size(56.dp).neumorphic(elevation = 4.dp, cornerRadius = 28.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.1f)),
+                modifier = Modifier
+                    .size(56.dp)
+                    .neumorphic(elevation = 4.dp, cornerRadius = 28.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.1f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(Icons.Filled.Add, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(28.dp))
@@ -268,13 +341,26 @@ fun LibraryContent(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
-                        .clickable { navController.navigate(Screen.PlaylistDetail.createRoute(playlist.playlistId, playlist.name)) }
+                        .background(
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
+                            RoundedCornerShape(12.dp)
+                        )
+                        .clickable {
+                            navController.navigate(
+                                Screen.PlaylistDetail.createRoute(
+                                    playlist.playlistId,
+                                    playlist.name
+                                )
+                            )
+                        }
                         .padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(
-                        modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(Icons.Filled.PlaylistAdd, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -316,95 +402,208 @@ fun LibraryContent(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class) // Yêu cầu cho ExposedDropdownMenuBox
 @Composable
-fun UploadContent(authViewModel: AuthViewModel, songViewModel: SongViewModel, modifier: Modifier) {
+fun UploadContent(
+    authViewModel: AuthViewModel,
+    songViewModel: SongViewModel,
+    modifier: Modifier,
+    onNavigateToPremium: () -> Unit
+) {
     val authState by authViewModel.authState.collectAsState()
     val currentUser = authState.user
     val isUploading by songViewModel.isUploading.collectAsState()
     val context = LocalContext.current
 
-    var title by remember { mutableStateOf("") }
-    var category by remember { mutableStateOf("") }
-    var audioUri by remember { mutableStateOf<Uri?>(null) }
-    var imageUri by remember { mutableStateOf<Uri?>(null) }
+    // KIỂM TRA ĐIỀU KIỆN VIP Ở ĐÂY
+    val uploadedCount = currentUser?.uploadedCount ?: 0
+    val isPremium = currentUser?.premium == true
 
-    val audioLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { audioUri = it }
-    val imageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { imageUri = it }
-
-    Column(
-        modifier = modifier.fillMaxSize().padding(24.dp).verticalScroll(rememberScrollState()),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text("Đăng tải Bài hát", color = MaterialTheme.colorScheme.onBackground, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        Text("Chia sẻ âm nhạc của bạn với mọi người", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        OutlinedTextField(
-            value = title,
-            onValueChange = { title = it },
-            label = { Text("Tên bài hát") },
-            modifier = Modifier.fillMaxWidth().neumorphic(elevation = 2.dp, cornerRadius = 12.dp),
-            shape = RoundedCornerShape(12.dp),
-            colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surface, unfocusedContainerColor = MaterialTheme.colorScheme.surface)
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        OutlinedTextField(
-            value = category,
-            onValueChange = { category = it },
-            label = { Text("Thể loại (VD: Pop, Lofi, Rap...)") },
-            modifier = Modifier.fillMaxWidth().neumorphic(elevation = 2.dp, cornerRadius = 12.dp),
-            shape = RoundedCornerShape(12.dp),
-            colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surface, unfocusedContainerColor = MaterialTheme.colorScheme.surface)
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Button(
-            onClick = { imageLauncher.launch("image/*") },
-            modifier = Modifier.fillMaxWidth().height(56.dp).neumorphic(elevation = 4.dp, cornerRadius = 28.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurfaceVariant)
+    if (uploadedCount >= 1 && !isPremium) {
+        // GIAO DIỆN CHẶN VIP
+        Column(
+            modifier = modifier
+                .fillMaxSize()
+                .padding(32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
-            Text(if (imageUri != null) "✅ Đã chọn Ảnh bìa" else "🖼️ Chọn Ảnh bìa")
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Button(
-            onClick = { audioLauncher.launch("audio/*") },
-            modifier = Modifier.fillMaxWidth().height(56.dp).neumorphic(elevation = 4.dp, cornerRadius = 28.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurfaceVariant)
-        ) {
-            Text(if (audioUri != null) "✅ Đã chọn file MP3" else "🎵 Chọn file Nhạc (*.mp3)")
-        }
-
-        Spacer(modifier = Modifier.height(40.dp))
-
-        if (isUploading) {
-            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-        } else {
+            Icon(
+                imageVector = Icons.Default.WorkspacePremium,
+                contentDescription = "VIP",
+                modifier = Modifier.size(100.dp),
+                tint = Color(0xFFFFD700)
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+            Text(
+                "Đã đạt giới hạn tải lên",
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                "Tài khoản thường chỉ được đăng tối đa 1 bài hát. Hãy nâng cấp Premium để đăng tải nhạc không giới hạn!",
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 15.sp,
+                lineHeight = 22.sp
+            )
+            Spacer(modifier = Modifier.height(40.dp))
             Button(
-                onClick = {
-                    if (title.isBlank() || audioUri == null || currentUser == null) {
-                        Toast.makeText(context, "Vui lòng nhập đầy đủ thông tin!", Toast.LENGTH_SHORT).show()
-                        return@Button
-                    }
-                    songViewModel.uploadSong(title, currentUser.uid, currentUser.displayName, audioUri!!, imageUri, category, 0, {
-                        Toast.makeText(context, "🎉 Thành công!", Toast.LENGTH_SHORT).show()
-                        title = ""
-                        category = ""
-                        audioUri = null
-                        imageUri = null
-                    }, {
-                        Toast.makeText(context, it, Toast.LENGTH_LONG).show()
-                    })
-                },
-                modifier = Modifier.fillMaxWidth().height(60.dp).neumorphic(elevation = 8.dp, cornerRadius = 30.dp),
-                shape = RoundedCornerShape(30.dp)
+                onClick = onNavigateToPremium,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .neumorphic(elevation = 8.dp, cornerRadius = 28.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFD700), contentColor = Color.Black)
             ) {
-                Text("ĐĂNG TẢI NGAY", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text("NÂNG CẤP PREMIUM NGAY", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            }
+        }
+    } else {
+        // GIAO DIỆN ĐĂNG TẢI BÌNH THƯỜNG
+        var title by remember { mutableStateOf("") }
+        var category by remember { mutableStateOf("") }
+        var audioUri by remember { mutableStateOf<Uri?>(null) }
+        var imageUri by remember { mutableStateOf<Uri?>(null) }
+        var expanded by remember { mutableStateOf(false) } // BIẾN QUẢN LÝ ĐÓNG MỞ DROPDOWN
+
+        // Lấy state chứa danh sách categories đã load từ database
+        val songState by songViewModel.songState.collectAsState()
+        val audioLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { audioUri = it }
+        val imageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { imageUri = it }
+
+        Column(
+            modifier = modifier
+                .fillMaxSize()
+                .padding(24.dp)
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text("Đăng tải Bài hát", color = MaterialTheme.colorScheme.onBackground, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Text("Chia sẻ âm nhạc của bạn với mọi người", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            OutlinedTextField(
+                value = title,
+                onValueChange = { title = it },
+                label = { Text("Tên bài hát") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .neumorphic(elevation = 2.dp, cornerRadius = 12.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surface, unfocusedContainerColor = MaterialTheme.colorScheme.surface)
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Ô CHỌN THỂ LOẠI (Dropdown Menu lấy từ Firebase)
+            ExposedDropdownMenuBox(
+                expanded = expanded,
+                onExpandedChange = { expanded = !expanded },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                OutlinedTextField(
+                    value = category.ifBlank { "Bấm để chọn thể loại..." },
+                    onValueChange = {},
+                    readOnly = true, // Không cho phép gõ tay
+                    label = { Text("Thể loại nhạc") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                    modifier = Modifier
+                        .menuAnchor()
+                        .fillMaxWidth()
+                        .neumorphic(elevation = 2.dp, cornerRadius = 12.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surface,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                    )
+                )
+
+                ExposedDropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false },
+                    modifier = Modifier.background(MaterialTheme.colorScheme.surface)
+                ) {
+                    if (songState.categories.isEmpty()) {
+                        DropdownMenuItem(
+                            text = { Text("Đang tải thể loại...", color = Color.Gray) },
+                            onClick = {}
+                        )
+                    } else {
+                        songState.categories.forEach { item ->
+                            DropdownMenuItem(
+                                text = { Text(item.name, color = MaterialTheme.colorScheme.onSurface) },
+                                onClick = {
+                                    category = item.name // Gán tên thể loại
+                                    expanded = false     // Đóng menu
+                                },
+                                contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Button(
+                onClick = { imageLauncher.launch("image/*") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .neumorphic(elevation = 4.dp, cornerRadius = 28.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurfaceVariant)
+            ) {
+                Text(if (imageUri != null) "✅ Đã chọn Ảnh bìa" else "🖼️ Chọn Ảnh bìa")
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Button(
+                onClick = { audioLauncher.launch("audio/*") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .neumorphic(elevation = 4.dp, cornerRadius = 28.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurfaceVariant)
+            ) {
+                Text(if (audioUri != null) "✅ Đã chọn file MP3" else "🎵 Chọn file Nhạc (*.mp3)")
+            }
+
+            Spacer(modifier = Modifier.height(40.dp))
+
+            if (isUploading) {
+                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+            } else {
+                Button(
+                    onClick = {
+                        if (title.isBlank() || category.isBlank() || audioUri == null || currentUser == null) {
+                            Toast.makeText(context, "Vui lòng nhập đầy đủ thông tin và chọn thể loại!", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        songViewModel.uploadSong(title, currentUser.uid, currentUser.displayName, audioUri!!, imageUri, category, 0, {
+                            Toast.makeText(context, "🎉 Đăng tải thành công!", Toast.LENGTH_SHORT).show()
+                            title = ""
+                            category = ""
+                            audioUri = null
+                            imageUri = null
+                        }, {
+                            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+                        })
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(60.dp)
+                        .neumorphic(elevation = 8.dp, cornerRadius = 30.dp),
+                    shape = RoundedCornerShape(30.dp)
+                ) {
+                    Text("ĐĂNG TẢI NGAY", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
             }
         }
     }
@@ -413,10 +612,19 @@ fun UploadContent(authViewModel: AuthViewModel, songViewModel: SongViewModel, mo
 @Composable
 fun MiniPlayer(
     viewModel: SongViewModel,
+    currentUser: com.example.auramusic.domain.model.User?,
     onMiniPlayerClick: () -> Unit
 ) {
     val state by viewModel.songState.collectAsState()
-    val currentSong = state.currentSong ?: return
+    val currentSong = state.currentSong ?: return // PHẢI CÓ DÒNG NÀY
+
+    // TỰ ĐỘNG ĐẾM THỜI GIAN NGHE (10 GIÂY = 1 LƯỢT XEM)
+    LaunchedEffect(state.isPlaying) {
+        while(state.isPlaying) {
+            delay(1000L)
+            viewModel.updateProgress((state.currentPosition + 1), currentUser?.uid)
+        }
+    }
 
     Surface(
         modifier = Modifier
@@ -462,21 +670,13 @@ fun MiniPlayer(
                 )
             }
 
-            IconButton(onClick = { 
-                if (state.isPlaying) viewModel.pauseSong() else viewModel.resumeSong() 
+            IconButton(onClick = {
+                if (state.isPlaying) viewModel.pauseSong() else viewModel.resumeSong()
             }) {
                 Icon(
                     imageVector = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary
-                )
-            }
-
-            IconButton(onClick = { /* Tính năng Skip Next có thể thêm sau */ }) {
-                Icon(
-                    imageVector = Icons.Default.SkipNext,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurface
                 )
             }
         }

@@ -16,6 +16,7 @@ import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
 import com.example.auramusic.domain.model.Playlist
 import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -82,23 +83,56 @@ class SongRepositoryImpl(
         Result.failure(e)
     }
 
-    override suspend fun incrementPlayCount(songId: String): Result<Unit> = try {
+    // --- ĐÃ SỬA LỖI READ BEFORE WRITE: Tăng lượt nghe cho Bài hát & Ca sĩ ---
+    override suspend fun incrementPlayCount(songId: String, artistId: String): Result<Unit> = try {
+        android.util.Log.d("TEST_VIEW", "1. Bắt đầu gọi Transaction cho bài hát ID: $songId")
         val songRef = firestore.collection("songs").document(songId)
+        val artistRef = if (artistId.isNotBlank()) firestore.collection("users").document(artistId) else null
+
         firestore.runTransaction { transaction ->
-            val snapshot = transaction.get(songRef)
-            val currentPlays = snapshot.getLong("playCount") ?: 0
-            transaction.update(songRef, "playCount", currentPlays + 1)
+            // ==========================================
+            // PHẦN 1: TẤT CẢ LỆNH ĐỌC (READ) NẰM TRƯỚC
+            // ==========================================
+            val songSnapshot = transaction.get(songRef)
+            val artistSnapshot = if (artistRef != null) transaction.get(artistRef) else null
+
+            // ==========================================
+            // PHẦN 2: TẤT CẢ LỆNH SỬA/GHI (WRITE) NẰM SAU
+            // ==========================================
+            if (songSnapshot.exists()) {
+                val currentPlays = songSnapshot.getLong("playCount") ?: 0
+                transaction.update(songRef, "playCount", currentPlays + 1)
+                android.util.Log.d("TEST_VIEW", "2. Đã update view bài hát lên: ${currentPlays + 1}")
+            }
+
+            if (artistRef != null) {
+                val totalPlays = if (artistSnapshot?.exists() == true) artistSnapshot.getLong("totalPlays") ?: 0 else 0
+                transaction.set(artistRef, hashMapOf("totalPlays" to totalPlays + 1), com.google.firebase.firestore.SetOptions.merge())
+                android.util.Log.d("TEST_VIEW", "3. Đã update view cho ca sĩ: $artistId")
+            }
         }.await()
+
+        android.util.Log.d("TEST_VIEW", "4. Transaction hoàn tất thành công 100%!")
+        Result.success(Unit)
+    } catch (e: Exception) {
+        android.util.Log.e("TEST_VIEW", "LỖI TRANSACTION BỊ SẬP: ${e.message}")
+        e.printStackTrace()
+        Result.failure(e)
+    }
+
+    // --- Tính năng lưu lịch sử ---
+    override suspend fun addToHistory(userId: String, songId: String): Result<Unit> = try {
+        val historyRef = firestore.collection("users").document(userId)
+            .collection("recentlyPlayed").document(songId)
+
+        val data = hashMapOf("timestamp" to FieldValue.serverTimestamp())
+        historyRef.set(data, SetOptions.merge()).await()
+
         Result.success(Unit)
     } catch (e: Exception) {
         Result.failure(e)
     }
 
-    // ====================================================================
-    // PHẦN MỚI THÊM: CLOUDINARY UPLOAD LOGIC
-    // ====================================================================
-
-    // Hàm hỗ trợ upload lên Cloudinary (ẩn đi, chỉ dùng nội bộ trong class này)
     private suspend fun uploadToCloudinary(uri: Uri, presetName: String): String = suspendCoroutine { continuation ->
         MediaManager.get().upload(uri)
             .unsigned(presetName)
@@ -108,7 +142,6 @@ class SongRepositoryImpl(
                 override fun onProgress(requestId: String, bytes: Long, totalBytes: Long) {}
 
                 override fun onSuccess(requestId: String, resultData: Map<*, *>) {
-                    // Lấy link an toàn (https) trả về từ Cloudinary
                     val url = resultData["secure_url"] as String
                     continuation.resume(url)
                 }
@@ -122,7 +155,7 @@ class SongRepositoryImpl(
             .dispatch()
     }
 
-    // Ghi đè lại hàm uploadSong: Đẩy file lên Cloudinary trước, lấy URL rồi mới lưu Firestore
+    // --- ĐÃ THÊM: Gọi hàm incrementUploadedCount khi up thành công ---
     override suspend fun uploadSong(
         title: String,
         artistId: String,
@@ -132,45 +165,42 @@ class SongRepositoryImpl(
         category: String,
         duration: Int
     ): Result<Unit> = try {
-        // 1. Tải file MP3 lên Cloudinary với preset "auraumusic"
         val audioUrl = uploadToCloudinary(audioUri, "auramusic")
-
-        // 2. Tải file Ảnh lên Cloudinary với preset "ml_default" (Nếu có chọn ảnh)
         val imageUrl = if (imageUri != null) {
             uploadToCloudinary(imageUri, "ml_default")
         } else {
-            "" // Không có ảnh bìa thì để chuỗi rỗng
+            ""
         }
 
-        // 3. Tạo ID mới cho bài hát trên Firestore
         val docRef = firestore.collection("songs").document()
         val songId = docRef.id
 
-        // 4. Tạo Object Song với URL vừa lấy được từ Cloudinary
         val newSong = Song(
             songId = songId,
             title = title,
             artistId = artistId,
             artistName = artistName,
-            audioUrl = audioUrl,      // Link Cloudinary MP3
-            imageUrl = imageUrl,      // Link Cloudinary Ảnh
-            genre = category,         // Dùng thuộc tính genre theo code của bạn
+            audioUrl = audioUrl,
+            imageUrl = imageUrl,
+            genre = category,
             duration = duration,
-            playCount = 0,
-            createdAt = System.currentTimeMillis()
+            createdAt = System.currentTimeMillis(),
         )
 
-        // 5. Lưu Object Song lên Firestore
         docRef.set(newSong).await()
+
+        // CỘNG 1 BÀI HÁT VÀO TÀI KHOẢN NGƯỜI DÙNG TẠI ĐÂY
+        incrementUploadedCount(artistId)
+
         Result.success(Unit)
     } catch (e: Exception) {
         Result.failure(e)
     }
-    // --- PHẦN MỚI THÊM: LOGIC THÍCH BÀI HÁT ---
+
     override suspend fun checkIsLiked(userId: String, songId: String): Result<Boolean> = try {
         val likeId = "${userId}_${songId}"
         val snapshot = firestore.collection("likes").document(likeId).get().await()
-        Result.success(snapshot.exists()) // Nếu tồn tại document thì là đã like
+        Result.success(snapshot.exists())
     } catch (e: Exception) {
         Result.failure(e)
     }
@@ -188,13 +218,10 @@ class SongRepositoryImpl(
             val currentLikes = songSnapshot.getLong("likeCount") ?: 0
 
             if (snapshot.exists()) {
-                // Đã like rồi -> Hủy like (Xóa dữ liệu và trừ điểm)
                 transaction.delete(likeRef)
                 transaction.update(songRef, "likeCount", currentLikes - 1)
                 isCurrentlyLiked = false
             } else {
-                // Chưa like -> Bấm like (Lưu dữ liệu mới và cộng điểm)
-                // Nhớ import com.example.auramusic.domain.model.Like và com.google.firebase.Timestamp
                 val newLike = com.example.auramusic.domain.model.Like(
                     likeId = likeId,
                     userId = userId,
@@ -211,21 +238,18 @@ class SongRepositoryImpl(
     } catch (e: Exception) {
         Result.failure(e)
     }
-    // --- TÍNH NĂNG BÀI HÁT YÊU THÍCH ---
+
     override suspend fun getFavoriteSongs(userId: String): Result<List<Song>> = try {
-        // 1. Vào bảng "likes" tìm tất cả những document do bạn (userId) đã thả tim
         val likesSnapshot = firestore.collection("likes")
             .whereEqualTo("userId", userId)
             .get()
             .await()
 
-        // Lấy ra một danh sách chứa toàn mã songId
         val songIds = likesSnapshot.documents.mapNotNull { it.getString("songId") }
 
         if (songIds.isEmpty()) {
-            Result.success(emptyList()) // Nếu chưa like bài nào thì trả về mảng rỗng
+            Result.success(emptyList())
         } else {
-            // 2. Chạy vòng lặp lấy thông tin chi tiết của từng bài hát bên bảng "songs"
             val favoriteSongs = mutableListOf<Song>()
             for (id in songIds) {
                 val songSnapshot = firestore.collection("songs").document(id).get().await()
@@ -239,18 +263,14 @@ class SongRepositoryImpl(
     } catch (e: Exception) {
         Result.failure(e)
     }
-    // ==========================================
-    // TÍNH NĂNG PLAYLIST
-    // ==========================================
 
     override suspend fun createPlaylist(userId: String, name: String): Result<Boolean> = try {
-        // Tạo một ID ngẫu nhiên cho Playlist mới
         val docRef = firestore.collection("playlists").document()
         val playlist = Playlist(
             playlistId = docRef.id,
             name = name,
             userId = userId,
-            songIds = emptyList() // Mới tạo nên chưa có bài hát nào
+            songIds = emptyList()
         )
         docRef.set(playlist).await()
         Result.success(true)
@@ -259,7 +279,6 @@ class SongRepositoryImpl(
     }
 
     override suspend fun getUserPlaylists(userId: String): Result<List<Playlist>> = try {
-        // Tìm tất cả playlist do user này tạo
         val snapshot = firestore.collection("playlists")
             .whereEqualTo("userId", userId)
             .get()
@@ -271,7 +290,6 @@ class SongRepositoryImpl(
     }
 
     override suspend fun addSongToPlaylist(playlistId: String, songId: String): Result<Boolean> = try {
-        // Dùng lệnh arrayUnion để nhét ID bài hát vào mảng songIds mà không làm đè bài cũ
         firestore.collection("playlists").document(playlistId)
             .update("songIds", FieldValue.arrayUnion(songId))
             .await()
@@ -281,7 +299,6 @@ class SongRepositoryImpl(
     }
 
     override suspend fun getSongsInPlaylist(playlistId: String): Result<List<Song>> = try {
-        // Bước 1: Lấy thông tin Playlist để xem mảng songIds có những bài nào
         val playlistSnapshot = firestore.collection("playlists").document(playlistId).get().await()
         val playlist = playlistSnapshot.toObject(Playlist::class.java)
 
@@ -290,7 +307,6 @@ class SongRepositoryImpl(
         if (songIds.isEmpty()) {
             Result.success(emptyList())
         } else {
-            // Bước 2: Dùng vòng lặp lấy chi tiết từng bài hát ra
             val songs = mutableListOf<Song>()
             for (id in songIds) {
                 val songSnap = firestore.collection("songs").document(id).get().await()
@@ -303,7 +319,6 @@ class SongRepositoryImpl(
         Result.failure(e)
     }
 
-    // Comments Implementation
     override suspend fun addComment(
         songId: String,
         userId: String,
@@ -341,5 +356,43 @@ class SongRepositoryImpl(
                 }
             }
         awaitClose { subscription.remove() }
+    }
+
+    override suspend fun getRecentlyPlayed(userId: String): Result<List<Song>> = try {
+        val historySnapshot = firestore.collection("users").document(userId)
+            .collection("recentlyPlayed")
+            .orderBy("timestamp", com.google.firebase.firestore.Query.Direction.DESCENDING)
+            .limit(20)
+            .get()
+            .await()
+
+        val songIds = historySnapshot.documents.map { it.id }
+
+        if (songIds.isEmpty()) {
+            Result.success(emptyList())
+        } else {
+            val songs = mutableListOf<Song>()
+            for (id in songIds) {
+                val songSnap = firestore.collection("songs").document(id).get().await()
+                val song = songSnap.toObject(Song::class.java)
+                if (song != null) songs.add(song)
+            }
+            Result.success(songs)
+        }
+    } catch (e: Exception) {
+        Result.failure(e)
+    }
+
+    // --- ĐÃ THÊM: Hàm tăng số lượng bài hát đã upload của người dùng ---
+    override suspend fun incrementUploadedCount(uid: String): Result<Unit> = try {
+        val userRef = firestore.collection("users").document(uid)
+        firestore.runTransaction { transaction ->
+            val snapshot = transaction.get(userRef)
+            val currentCount = snapshot.getLong("uploadedCount") ?: 0
+            transaction.update(userRef, "uploadedCount", currentCount + 1)
+        }.await()
+        Result.success(Unit)
+    } catch (e: Exception) {
+        Result.failure(e)
     }
 }

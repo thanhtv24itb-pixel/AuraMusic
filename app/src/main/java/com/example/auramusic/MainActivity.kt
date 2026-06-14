@@ -82,14 +82,14 @@ class MainActivity : ComponentActivity() {
         setContent {
             val context = LocalContext.current
             val songState by songViewModel.songState.collectAsState()
-            
+
             val exoPlayer = remember {
                 ExoPlayer.Builder(context).build().apply {
                     addListener(object : Player.Listener {
                         override fun onPlaybackStateChanged(playbackState: Int) {
                             if (playbackState == Player.STATE_ENDED) {
-                                songViewModel.pauseSong()
-                                songViewModel.updateProgress(0)
+                                // ĐÃ SỬA: Giao quyền quyết định qua cho ViewModel khi hết bài hát
+                                songViewModel.handleSongEnded()
                                 seekTo(0)
                             }
                         }
@@ -119,7 +119,9 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(songState.isPlaying) {
                 while (true) {
                     if (songState.isPlaying) {
-                        songViewModel.updateProgress((exoPlayer.currentPosition / 1000).toInt())
+                        // ĐÃ SỬA: Lấy current user ID truyền vào để hàm updateProgress có ID lưu Lịch sử
+                        val currentUserId = firebaseAuth.currentUser?.uid
+                        songViewModel.updateProgress((exoPlayer.currentPosition / 1000).toInt(), currentUserId)
                     }
                     kotlinx.coroutines.delay(1000L)
                 }
