@@ -1,7 +1,9 @@
 package com.example.auramusic.presentation.screens
 
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -9,7 +11,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Cancel
+import androidx.compose.material.icons.filled.Pending
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.filled.WorkspacePremium
@@ -25,6 +33,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.auramusic.domain.model.Song
+import com.example.auramusic.domain.model.User
 import com.example.auramusic.presentation.components.SongItem
 import com.example.auramusic.presentation.viewmodel.AuthViewModel
 import com.example.auramusic.presentation.viewmodel.SongViewModel
@@ -50,7 +60,7 @@ fun ProfileScreen(
     // =========================================================================
     // XỬ LÝ LOGIC "KHÁCH" (Chưa đăng nhập mà đòi vào Profile của mình)
     // =========================================================================
-    if (isMyProfile && (myUid == null || myUid.isBlank())) {
+    if (isMyProfile && myUid.isNullOrBlank()) {
         Scaffold(
             topBar = {
                 TopAppBar(
@@ -91,11 +101,18 @@ fun ProfileScreen(
     val user by userViewModel.artistProfile.collectAsState()
     val isLiked by userViewModel.isArtistLiked.collectAsState()
     val songState by songViewModel.songState.collectAsState()
-    val profileSongs = songState.recentSongs.filter { it.artistId == userId }
+    val userSongs by authViewModel.userSongs.collectAsState()
+    
+    // ĐÃ SỬA: Lấy toàn bộ bài hát của artist này thay vì chỉ lấy từ list recent
+    val artistSongs = songState.artistSongs
+
+    var showEditDialog by remember { mutableStateOf(false) }
+    var showNotifications by remember { mutableStateOf(false) }
 
     // Gọi Firebase load dữ liệu khi vào trang
     LaunchedEffect(userId) {
         userViewModel.loadArtistProfile(userId, myUid)
+        songViewModel.loadSongsByArtist(userId)
     }
 
     Scaffold(
@@ -107,6 +124,15 @@ fun ProfileScreen(
                 },
                 actions = {
                     if (isMyProfile) {
+                        IconButton(onClick = { showNotifications = true }) {
+                            BadgedBox(badge = {
+                                if (userSongs.any { it.status != "approved" }) {
+                                    Badge()
+                                }
+                            }) {
+                                Icon(Icons.Default.Notifications, contentDescription = "Notifications")
+                            }
+                        }
                         TextButton(onClick = onLogoutClick) {
                             Text("Đăng xuất", color = Color.Red, style = MaterialTheme.typography.labelLarge)
                         }
@@ -144,7 +170,7 @@ fun ProfileScreen(
                 AsyncImage(
                     model = user?.avatarUrl?.ifBlank { "https://cdn-icons-png.flaticon.com/512/149/149071.png" },
                     contentDescription = null,
-                    modifier = avatarModifier,
+                    modifier = avatarModifier.clickable(enabled = isMyProfile) { showEditDialog = true },
                     contentScale = ContentScale.Crop
                 )
                 Spacer(modifier = Modifier.height(16.dp))
@@ -225,15 +251,139 @@ fun ProfileScreen(
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            if (profileSongs.isEmpty()) {
+            // Lọc danh sách hiển thị
+            val displayedSongs = if (isMyProfile) {
+                artistSongs // Hiện tất cả bài của mình
+            } else {
+                artistSongs.filter { it.status == "approved" } // Chỉ hiện bài đã duyệt cho khách
+            }
+
+            if (displayedSongs.isEmpty()) {
                 item { Text("Chưa có bài hát nào", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 20.dp)) }
             } else {
-                items(profileSongs) { song ->
-                    SongItem(song = song, onPlayClick = { songViewModel.playSong(song) })
+                items(displayedSongs) { song ->
+                    Box {
+                        SongItem(song = song, onPlayClick = { 
+                            if (song.status == "approved") {
+                                songViewModel.playSong(song) 
+                            }
+                        })
+                        
+                        // Nếu là bài của mình và chưa duyệt thì hiện badge nhỏ
+                        if (isMyProfile && song.status != "approved") {
+                            Surface(
+                                color = if (song.status == "rejected") Color.Red else Color(0xFFF59E0B),
+                                shape = RoundedCornerShape(4.dp),
+                                modifier = Modifier.align(Alignment.TopEnd).padding(4.dp)
+                            ) {
+                                Text(
+                                    text = if (song.status == "rejected") "Bị từ chối" else "Chờ duyệt",
+                                    color = Color.White,
+                                    fontSize = 8.sp,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
+
+        if (showEditDialog) {
+            EditProfileDialog(
+                user = user!!,
+                onDismiss = { showEditDialog = false },
+                onConfirm = { name, uri ->
+                    authViewModel.updateProfile(name, uri)
+                    showEditDialog = false
+                }
+            )
+        }
+
+        if (showNotifications) {
+            NotificationDialog(
+                songs = userSongs,
+                onDismiss = { showNotifications = false }
+            )
+        }
     }
+}
+
+@Composable
+fun EditProfileDialog(
+    user: User,
+    onDismiss: () -> Unit,
+    onConfirm: (String, Uri?) -> Unit
+) {
+    var name by remember { mutableStateOf(user.displayName) }
+    var selectedUri by remember { mutableStateOf<Uri?>(null) }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { selectedUri = it }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Cập nhật thông tin") },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                AsyncImage(
+                    model = selectedUri ?: user.avatarUrl,
+                    contentDescription = null,
+                    modifier = Modifier.size(80.dp).clip(CircleShape).clickable { picker.launch("image/*") },
+                    contentScale = ContentScale.Crop
+                )
+                Text("Nhấn để đổi ảnh đại diện", fontSize = 12.sp, color = Color.Gray)
+                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Tên hiển thị") })
+            }
+        },
+        confirmButton = { Button(onClick = { onConfirm(name, selectedUri) }) { Text("Lưu") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Hủy") } }
+    )
+}
+
+@Composable
+fun NotificationDialog(songs: List<Song>, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Thông báo bài hát") },
+        text = {
+            LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
+                items(songs) { song ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = when(song.status) {
+                                "approved" -> Icons.Default.CheckCircle
+                                "rejected" -> Icons.Default.Cancel
+                                else -> Icons.Default.Pending
+                            },
+                            contentDescription = null,
+                            tint = when(song.status) {
+                                "approved" -> Color(0xFF10B981)
+                                "rejected" -> Color.Red
+                                else -> Color(0xFFF59E0B)
+                            }
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text(song.title, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = when(song.status) {
+                                    "approved" -> "Đã được duyệt"
+                                    "rejected" -> "Bị từ chối"
+                                    else -> "Đang chờ duyệt"
+                                },
+                                fontSize = 12.sp,
+                                color = Color.Gray
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { Button(onClick = onDismiss) { Text("Đóng") } }
+    )
 }
 
 @Composable

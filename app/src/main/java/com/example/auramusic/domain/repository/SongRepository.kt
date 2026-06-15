@@ -8,9 +8,9 @@ import com.example.auramusic.domain.model.Comment
 import kotlinx.coroutines.flow.Flow
 
 interface SongRepository {
-    // Home screen
-    suspend fun getMostPlayedSongs(limit: Int = 10): Result<List<Song>>
-    suspend fun getRecentSongs(limit: Int = 10): Result<List<Song>>
+    // Home screen - Trả về Flow để cập nhật thời gian thực
+    fun getMostPlayedSongs(limit: Int = 10): Flow<List<Song>>
+    fun getRecentSongs(limit: Int = 10): Flow<List<Song>>
 
     // Search screen
     suspend fun searchSongs(query: String): Result<List<Song>>
@@ -20,10 +20,8 @@ interface SongRepository {
     // Song details & actions
     suspend fun getSongById(songId: String): Result<Song>
 
-    // ĐÃ SỬA: Thêm tham số artistId
     suspend fun incrementPlayCount(songId: String, artistId: String): Result<Unit>
 
-    // ĐÃ THÊM: Tính năng lưu lịch sử
     suspend fun addToHistory(userId: String, songId: String): Result<Unit>
 
     // Upload
@@ -41,6 +39,8 @@ interface SongRepository {
     suspend fun checkIsLiked(userId: String, songId: String): Result<Boolean>
     suspend fun toggleLikeSong(userId: String, songId: String): Result<Boolean>
     suspend fun getFavoriteSongs(userId: String): Result<List<Song>>
+
+    fun getSongsByArtist(artistId: String): Flow<List<Song>>
 
     // Playlist
     suspend fun createPlaylist(userId: String, name: String): Result<Boolean>

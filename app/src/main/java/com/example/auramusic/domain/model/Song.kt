@@ -1,17 +1,24 @@
 package com.example.auramusic.domain.model
 
+import com.google.firebase.firestore.PropertyName
+
 data class Song(
-    val songId: String = "",
+    @get:PropertyName("songId")
+    @set:PropertyName("songId")
+    var songId: String = "",
+    
     val title: String = "",
     val artistId: String = "",
     val artistName: String = "",
     val audioUrl: String = "",
     val imageUrl: String = "",
     val genre: String = "",
-    val duration: Int = 0, // Thời lượng tính bằng giây
+    val duration: Int = 0,
     val playCount: Int = 0,
     val likeCount: Int = 0,
     val createdAt: Long = 0L,
-    val status: String = "pending"
-
+    
+    @get:PropertyName("status")
+    @set:PropertyName("status")
+    var status: String = "pending"
 )

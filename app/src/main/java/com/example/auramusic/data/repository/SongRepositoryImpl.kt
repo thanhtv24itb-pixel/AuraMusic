@@ -9,6 +9,7 @@ import com.example.auramusic.domain.model.Song
 import com.example.auramusic.domain.model.Comment
 import com.example.auramusic.domain.repository.SongRepository
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Query
 import kotlinx.coroutines.tasks.await
 import kotlin.coroutines.resume
@@ -25,35 +26,67 @@ class SongRepositoryImpl(
     private val firestore: FirebaseFirestore
 ) : SongRepository {
 
-    override suspend fun getMostPlayedSongs(limit: Int): Result<List<Song>> = try {
-        val snapshot = firestore.collection("songs")
+    override fun getMostPlayedSongs(limit: Int): Flow<List<Song>> = callbackFlow {
+        val subscription = firestore.collection("songs")
+            .whereEqualTo("status", "approved")
             .orderBy("playCount", Query.Direction.DESCENDING)
             .limit(limit.toLong())
-            .get()
-            .await()
-        Result.success(snapshot.toObjects(Song::class.java))
-    } catch (e: Exception) {
-        Result.failure(e)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    if (error is FirebaseFirestoreException && error.code == FirebaseFirestoreException.Code.FAILED_PRECONDITION) {
+                        android.util.Log.e("SongRepositoryImpl", "Index missing for getMostPlayedSongs. Please create it using the link in Logcat.")
+                        trySend(emptyList())
+                    } else {
+                        close(error)
+                    }
+                    return@addSnapshotListener
+                }
+                if (snapshot != null) {
+                    val songs = snapshot.documents.mapNotNull { doc ->
+                        doc.toObject(Song::class.java)?.apply { songId = doc.id }
+                    }
+                    trySend(songs)
+                }
+            }
+        awaitClose { subscription.remove() }
     }
 
-    override suspend fun getRecentSongs(limit: Int): Result<List<Song>> = try {
-        val snapshot = firestore.collection("songs")
+    override fun getRecentSongs(limit: Int): Flow<List<Song>> = callbackFlow {
+        val subscription = firestore.collection("songs")
+            .whereEqualTo("status", "approved")
             .orderBy("createdAt", Query.Direction.DESCENDING)
             .limit(limit.toLong())
-            .get()
-            .await()
-        Result.success(snapshot.toObjects(Song::class.java))
-    } catch (e: Exception) {
-        Result.failure(e)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    if (error is FirebaseFirestoreException && error.code == FirebaseFirestoreException.Code.FAILED_PRECONDITION) {
+                        android.util.Log.e("SongRepositoryImpl", "Index missing for getRecentSongs. Please create it using the link in Logcat.")
+                        trySend(emptyList())
+                    } else {
+                        close(error)
+                    }
+                    return@addSnapshotListener
+                }
+                if (snapshot != null) {
+                    val songs = snapshot.documents.mapNotNull { doc ->
+                        doc.toObject(Song::class.java)?.apply { songId = doc.id }
+                    }
+                    trySend(songs)
+                }
+            }
+        awaitClose { subscription.remove() }
     }
 
     override suspend fun searchSongs(query: String): Result<List<Song>> = try {
         val snapshot = firestore.collection("songs")
+            .whereEqualTo("status", "approved")
             .whereGreaterThanOrEqualTo("title", query)
             .whereLessThanOrEqualTo("title", query + "\uf8ff")
             .get()
             .await()
-        Result.success(snapshot.toObjects(Song::class.java))
+        val songs = snapshot.documents.mapNotNull { doc ->
+            doc.toObject(Song::class.java)?.apply { songId = doc.id }
+        }
+        Result.success(songs)
     } catch (e: Exception) {
         Result.failure(e)
     }
@@ -68,9 +101,13 @@ class SongRepositoryImpl(
     override suspend fun getSongsByCategory(genre: String): Result<List<Song>> = try {
         val snapshot = firestore.collection("songs")
             .whereEqualTo("genre", genre)
+            .whereEqualTo("status", "approved")
             .get()
             .await()
-        Result.success(snapshot.toObjects(Song::class.java))
+        val songs = snapshot.documents.mapNotNull { doc ->
+            doc.toObject(Song::class.java)?.apply { songId = doc.id }
+        }
+        Result.success(songs)
     } catch (e: Exception) {
         Result.failure(e)
     }
@@ -254,7 +291,8 @@ class SongRepositoryImpl(
             for (id in songIds) {
                 val songSnapshot = firestore.collection("songs").document(id).get().await()
                 val song = songSnapshot.toObject(Song::class.java)
-                if (song != null) {
+                // CHỈ ADD VÀO DANH SÁCH NẾU BÀI HÁT ĐÓ ĐÃ ĐƯỢC DUYỆT
+                if (song != null && song.status == "approved") {
                     favoriteSongs.add(song)
                 }
             }
@@ -394,5 +432,26 @@ class SongRepositoryImpl(
         Result.success(Unit)
     } catch (e: Exception) {
         Result.failure(e)
+    }
+
+    override fun getSongsByArtist(artistId: String): Flow<List<Song>> = callbackFlow {
+        val subscription = firestore.collection("songs")
+            .whereEqualTo("artistId", artistId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    android.util.Log.e("SongRepositoryImpl", "Error getting songs by artist: ${error.message}")
+                    close(error)
+                    return@addSnapshotListener
+                }
+                if (snapshot != null) {
+                    val songs = snapshot.documents.mapNotNull { doc ->
+                        val song = doc.toObject(Song::class.java)
+                        android.util.Log.d("SongRepositoryImpl", "Song: ${song?.title}, Status: ${doc.getString("status")}")
+                        song?.apply { songId = doc.id }
+                    }
+                    trySend(songs)
+                }
+            }
+        awaitClose { subscription.remove() }
     }
 }

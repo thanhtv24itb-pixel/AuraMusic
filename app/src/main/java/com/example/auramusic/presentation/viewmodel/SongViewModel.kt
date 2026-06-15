@@ -13,6 +13,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 data class SongUiState(
@@ -22,6 +23,7 @@ data class SongUiState(
     val categories: List<Category> = emptyList(),
     val searchResults: List<Song> = emptyList(),
     val selectedCategorySongs: List<Song> = emptyList(),
+    val artistSongs: List<Song> = emptyList(),
     val currentSong: Song? = null,
     val isPlaying: Boolean = false,
     val currentPosition: Int = 0,
@@ -50,38 +52,58 @@ class SongViewModel(
     private val _favoriteSongs = MutableStateFlow<List<Song>>(emptyList())
     val favoriteSongs: StateFlow<List<Song>> = _favoriteSongs
 
-    private val _myPlaylists = MutableStateFlow<List<Playlist>>(emptyList())
-    val myPlaylists: StateFlow<List<Playlist>> = _myPlaylists
+    private val _myPlaylists = MutableStateFlow<List<Playlist>>(emptyStringList()) // Lưu ý: Cần import nếu lỗi
+    private fun emptyStringList(): List<Playlist> = emptyList() // Fix tạm nếu lỗi type
 
     private val _playlistSongs = MutableStateFlow<List<Song>>(emptyList())
     val playlistSongs: StateFlow<List<Song>> = _playlistSongs
 
-    // Biến lưu danh sách Lịch sử nghe nhạc
     private val _recentlyPlayedSongs = MutableStateFlow<List<Song>>(emptyList())
     val recentlyPlayedSongs: StateFlow<List<Song>> = _recentlyPlayedSongs
 
-    // --- CÁC BIẾN QUẢN LÝ TĂNG VIEW & HẸN GIỜ ---
     private var hasCountedViewAndHistory = false
     private var sleepTimerJob: Job? = null
+    private var artistSongsJob: Job? = null
     var stopAfterCurrentSong = false
         private set
 
+    val myPlaylists: StateFlow<List<Playlist>> = _myPlaylists
+
     init {
-        loadHomeData()
+        observeHomeData()
         loadCategories()
     }
 
-    fun loadHomeData() {
+    // ĐÃ SỬA: Chuyển sang Observe (Theo dõi) thay vì chỉ Load 1 lần
+    private fun observeHomeData() {
         viewModelScope.launch {
             _songState.value = _songState.value.copy(isLoading = true)
-            val mostPlayed = getMostPlayedSongsUseCase()
-            val recent = getRecentSongsUseCase()
-            _songState.value = _songState.value.copy(
-                mostPlayedSongs = mostPlayed.getOrDefault(emptyList()),
-                recentSongs = recent.getOrDefault(emptyList()),
-                isLoading = false
-            )
+            
+            // Theo dõi bài hát nghe nhiều nhất
+            launch {
+                getMostPlayedSongsUseCase().collectLatest { songs ->
+                    _songState.value = _songState.value.copy(
+                        mostPlayedSongs = songs,
+                        isLoading = false
+                    )
+                }
+            }
+
+            // Theo dõi bài hát mới nhất
+            launch {
+                getRecentSongsUseCase().collectLatest { songs ->
+                    _songState.value = _songState.value.copy(
+                        recentSongs = songs,
+                        isLoading = false
+                    )
+                }
+            }
         }
+    }
+
+    fun loadHomeData() {
+        // Hàm này giữ lại để tương thích nhưng logic đã chuyển vào observeHomeData
+        observeHomeData()
     }
 
     fun loadCategories() {
@@ -113,14 +135,21 @@ class SongViewModel(
         }
     }
 
-    // --- LOGIC PHÁT NHẠC VÀ THEO DÕI TIẾN ĐỘ ---
+    fun loadSongsByArtist(artistId: String) {
+        artistSongsJob?.cancel()
+        artistSongsJob = viewModelScope.launch {
+            songRepository.getSongsByArtist(artistId).collect { songs ->
+                _songState.value = _songState.value.copy(artistSongs = songs)
+            }
+        }
+    }
+
     fun playSong(song: Song) {
         _songState.value = _songState.value.copy(
             currentSong = song,
             isPlaying = true,
             currentPosition = 0
         )
-        // Reset cờ khi người dùng bấm nghe bài hát mới
         hasCountedViewAndHistory = false
     }
 
@@ -135,17 +164,13 @@ class SongViewModel(
     fun updateProgress(positionInSeconds: Int, currentUserId: String?) {
         _songState.value = _songState.value.copy(currentPosition = positionInSeconds)
 
-        // Tính năng: Lớn hơn hoặc bằng 10 giây sẽ cộng view và lưu lịch sử
         if (positionInSeconds >= 10 && !hasCountedViewAndHistory) {
             hasCountedViewAndHistory = true
             val currentSong = _songState.value.currentSong
 
             if (currentSong != null) {
                 viewModelScope.launch {
-                    // 1. Tăng lượt nghe (View)
                     songRepository.incrementPlayCount(currentSong.songId, currentSong.artistId)
-
-                    // 2. LƯU LỊCH SỬ NGHE NHẠC (Đoạn bạn bị thiếu)
                     if (currentUserId != null) {
                         songRepository.addToHistory(currentUserId, currentSong.songId)
                     }
@@ -154,23 +179,18 @@ class SongViewModel(
         }
     }
 
-    // --- LOGIC KHI BÀI HÁT KẾT THÚC ---
     fun handleSongEnded() {
-        // ĐÃ SỬA: Reset lại cờ khi hết bài. Để nếu bài tự phát lại (Loop) thì tính 1 lượt nghe mới.
         hasCountedViewAndHistory = false
-
         if (stopAfterCurrentSong) {
             pauseSong()
             updateProgress(0, null)
-            stopAfterCurrentSong = false // Tắt hẹn giờ đi
+            stopAfterCurrentSong = false
         } else {
-            // Logic chuyển bài (ví dụ Auto-next hoặc Lặp lại tùy bạn phát triển sau)
             pauseSong()
             updateProgress(0, null)
         }
     }
 
-    // --- LOGIC HẸN GIỜ TẮT NHẠC ---
     fun startSleepTimerByMinutes(minutes: Int) {
         cancelSleepTimer()
         if (minutes <= 0) return
@@ -190,7 +210,6 @@ class SongViewModel(
         stopAfterCurrentSong = false
     }
 
-    // --- CÁC HÀM LIÊN QUAN ĐẾN USER, LỊCH SỬ & PLAYLIST ---
     fun loadRecentlyPlayed(userId: String) {
         viewModelScope.launch {
             songRepository.getRecentlyPlayed(userId).onSuccess { songs ->
@@ -262,31 +281,27 @@ class SongViewModel(
     }
 
     fun createPlaylist(userId: String, name: String, onSuccess: () -> Unit, onError: (String) -> Unit) {
-        if (name.isBlank()) {
-            onError("Tên playlist không được để trống")
-            return
-        }
-        viewModelScope.launch {
-            songRepository.createPlaylist(userId, name).onSuccess {
-                loadMyPlaylists(userId)
-                onSuccess()
-            }.onFailure { e ->
-                onError(e.message ?: "Lỗi khi tạo Playlist")
+        if (name.isNotBlank()) {
+            viewModelScope.launch {
+                songRepository.createPlaylist(userId, name).onSuccess {
+                    loadMyPlaylists(userId)
+                    onSuccess()
+                }.onFailure { e ->
+                    onError(e.message ?: "Lỗi khi tạo Playlist")
+                }
             }
         }
     }
 
     fun addCurrentSongToPlaylist(playlistId: String, onSuccess: () -> Unit, onError: (String) -> Unit) {
         val currentSongId = _songState.value.currentSong?.songId
-        if (currentSongId == null) {
-            onError("Không có bài hát nào đang phát")
-            return
-        }
-        viewModelScope.launch {
-            songRepository.addSongToPlaylist(playlistId, currentSongId).onSuccess {
-                onSuccess()
-            }.onFailure { e ->
-                onError(e.message ?: "Lỗi khi thêm bài hát")
+        if (currentSongId != null) {
+            viewModelScope.launch {
+                songRepository.addSongToPlaylist(playlistId, currentSongId).onSuccess {
+                    onSuccess()
+                }.onFailure { e ->
+                    onError(e.message ?: "Lỗi khi thêm bài hát")
+                }
             }
         }
     }
@@ -310,9 +325,10 @@ class SongViewModel(
     }
 
     fun addComment(songId: String, userId: String, userName: String, userAvatar: String, content: String) {
-        if (content.isBlank()) return
-        viewModelScope.launch {
-            songRepository.addComment(songId, userId, userName, userAvatar, content)
+        if (content.isNotBlank()) {
+            viewModelScope.launch {
+                songRepository.addComment(songId, userId, userName, userAvatar, content)
+            }
         }
     }
 }

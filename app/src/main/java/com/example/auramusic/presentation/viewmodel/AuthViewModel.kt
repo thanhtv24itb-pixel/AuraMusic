@@ -2,7 +2,10 @@ package com.example.auramusic.presentation.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.auramusic.domain.model.Song
 import com.example.auramusic.domain.model.User
+import com.example.auramusic.util.CloudinaryUtils
+import android.net.Uri
 import com.example.auramusic.domain.usecase.LoginUseCase
 import com.example.auramusic.domain.usecase.SignupUseCase
 import com.google.firebase.auth.FirebaseAuth
@@ -12,6 +15,7 @@ import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.ListenerRegistration
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.launch
 
 data class AuthUiState(
@@ -28,6 +32,11 @@ class AuthViewModel(
 
     private val _authState = MutableStateFlow(AuthUiState())
     val authState: StateFlow<AuthUiState> = _authState
+
+    private val _userSongs = MutableStateFlow<List<Song>>(emptyList())
+    val userSongs: StateFlow<List<Song>> = _userSongs
+
+    private var songsListener: ListenerRegistration? = null
 
     // CHÍNH LÀ 3 BIẾN NÀY ĐÃ GIÚP CHỮA HẾT BÁO ĐỎ:
     private val firestore = FirebaseFirestore.getInstance()
@@ -98,12 +107,50 @@ class AuthViewModel(
                     }
                 }
             }
+
+        // Nghe danh sách bài hát của user để thông báo duyệt
+        songsListener?.remove()
+        songsListener = firestore.collection("songs")
+            .whereEqualTo("artistId", uid)
+            .addSnapshotListener { snapshot, _ ->
+                if (snapshot != null) {
+                    _userSongs.value = snapshot.toObjects(Song::class.java)
+                }
+            }
+    }
+
+    fun updateProfile(displayName: String, avatarUri: Uri?) {
+        val user = _authState.value.user ?: return
+        viewModelScope.launch {
+            _authState.value = _authState.value.copy(isLoading = true)
+            try {
+                val avatarUrl = if (avatarUri != null) {
+                    CloudinaryUtils.uploadToCloudinary(avatarUri)
+                } else {
+                    user.avatarUrl
+                }
+
+                val updateData = mutableMapOf<String, Any>(
+                    "displayName" to displayName,
+                    "avatarUrl" to avatarUrl
+                )
+
+                firestore.collection("users").document(user.uid).update(updateData).await()
+                _authState.value = _authState.value.copy(isLoading = false, success = true)
+            } catch (e: Exception) {
+                _authState.value = _authState.value.copy(isLoading = false, error = e.message)
+            }
+        }
     }
 
     fun logout() {
         firebaseAuth.signOut()
         userListener?.remove()
         resetState()
+    }
+
+    fun setErrorMessage(message: String) {
+        _authState.value = _authState.value.copy(error = message, success = false)
     }
 
     fun clearError() {
@@ -117,5 +164,6 @@ class AuthViewModel(
     override fun onCleared() {
         super.onCleared()
         userListener?.remove()
+        songsListener?.remove()
     }
 }

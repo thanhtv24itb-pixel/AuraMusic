@@ -34,6 +34,12 @@ android {
     buildFeatures {
         compose = true
     }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = false
+        }
+    }
 }
 
 dependencies {
@@ -51,9 +57,10 @@ dependencies {
     implementation(libs.firebase.auth.ktx)
     implementation(platform(libs.firebase.bom))
     implementation(libs.coil.compose)
-    implementation("com.cloudinary:cloudinary-android:2.5.0")
-    implementation("androidx.media3:media3-exoplayer:1.2.1")
-    implementation("androidx.media3:media3-ui:1.2.1")
+
+    implementation(libs.cloudinary.android)
+    implementation(libs.media3.exoplayer)
+    implementation(libs.media3.ui)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

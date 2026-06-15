@@ -1,6 +1,11 @@
 package com.example.auramusic.presentation.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import com.example.auramusic.util.CloudinaryUtils
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -37,6 +42,16 @@ fun AdminCategoryScreen(viewModel: AdminViewModel) {
     // Các biến lưu chữ đang gõ trong textfield
     var inputName by remember { mutableStateOf("") }
     var inputImageUrl by remember { mutableStateOf("") }
+
+    val scope = rememberCoroutineScope()
+    var selectedImageUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var isUploading by remember { mutableStateOf(false) }
+
+    val imagePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        selectedImageUri = uri
+    }
 
     // Hàm mở Dialog và điền sẵn dữ liệu (nếu là Sửa)
     fun openDialog(category: Category? = null) {
@@ -83,29 +98,71 @@ fun AdminCategoryScreen(viewModel: AdminViewModel) {
                         label = { Text("Tên thể loại (VD: Pop, Ballad)") },
                         singleLine = true
                     )
-                    OutlinedTextField(
-                        value = inputImageUrl,
-                        onValueChange = { inputImageUrl = it },
-                        label = { Text("Link ảnh minh họa (URL)") },
-                        singleLine = true
-                    )
+                    
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(150.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color.LightGray)
+                            .clickable { imagePicker.launch("image/*") },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (selectedImageUri != null) {
+                            AsyncImage(
+                                model = selectedImageUri,
+                                contentDescription = null,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else if (inputImageUrl.isNotBlank()) {
+                            AsyncImage(
+                                model = inputImageUrl,
+                                contentDescription = null,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Text("Chọn ảnh từ điện thoại")
+                        }
+                        
+                        if (isUploading) {
+                            CircularProgressIndicator(color = Color.White)
+                        }
+                    }
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
                         if (inputName.isNotBlank()) {
-                            if (editingCategory == null) {
-                                viewModel.addCategory(inputName, inputImageUrl)
-                            } else {
-                                viewModel.updateCategory(editingCategory!!.id, inputName, inputImageUrl)
+                            scope.launch {
+                                isUploading = true
+                                val finalImageUrl = if (selectedImageUri != null) {
+                                    try {
+                                        CloudinaryUtils.uploadToCloudinary(selectedImageUri!!)
+                                    } catch (e: Exception) {
+                                        inputImageUrl
+                                    }
+                                } else {
+                                    inputImageUrl
+                                }
+                                
+                                if (editingCategory == null) {
+                                    viewModel.addCategory(inputName, finalImageUrl)
+                                } else {
+                                    viewModel.updateCategory(editingCategory!!.id, inputName, finalImageUrl)
+                                }
+                                isUploading = false
+                                showDialog = false
+                                selectedImageUri = null
                             }
-                            showDialog = false
                         }
                     },
+                    enabled = !isUploading,
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
                 ) {
-                    Text("Lưu")
+                    Text(if (isUploading) "Đang tải..." else "Lưu")
                 }
             },
             dismissButton = {

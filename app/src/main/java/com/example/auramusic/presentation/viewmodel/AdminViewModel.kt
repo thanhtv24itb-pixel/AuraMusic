@@ -7,12 +7,19 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.auramusic.domain.model.Category
 import com.example.auramusic.domain.model.Song
+import com.example.auramusic.domain.model.User
+import com.example.auramusic.domain.model.Transaction
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
 class AdminViewModel : ViewModel() {
     private val db = FirebaseFirestore.getInstance()
+    private var categoriesListener: ListenerRegistration? = null
+    private var songsListener: ListenerRegistration? = null
+    private var usersListener: ListenerRegistration? = null
+    private var transactionsListener: ListenerRegistration? = null
 
     // Các biến lưu trữ dữ liệu thống kê
     var totalUsers by mutableStateOf(0)
@@ -28,6 +35,10 @@ class AdminViewModel : ViewModel() {
     var categories by mutableStateOf<List<Category>>(emptyList())
         private set
     var allSongs by mutableStateOf<List<Song>>(emptyList())
+        private set
+    var allUsers by mutableStateOf<List<User>>(emptyList())
+        private set
+    var allTransactions by mutableStateOf<List<Transaction>>(emptyList())
         private set
 
     // Hàm gọi Firebase để lấy dữ liệu
@@ -63,22 +74,19 @@ class AdminViewModel : ViewModel() {
             }
         }
     }
+
     fun loadCategories() {
-        viewModelScope.launch {
-            db.collection("categories").addSnapshotListener { snapshot, error ->
-                if (error != null || snapshot == null) return@addSnapshotListener
-                val list = snapshot.documents.mapNotNull { document ->
-                    // Ép kiểu document về data class Category
-                    val cat = document.toObject(Category::class.java)
-                    // Cập nhật lại ID bằng chính ID của document trên Firebase
-                    cat?.copy(id = document.id)
-                }
-                categories = list
+        categoriesListener?.remove()
+        categoriesListener = db.collection("categories").addSnapshotListener { snapshot, error ->
+            if (error != null || snapshot == null) return@addSnapshotListener
+            val list = snapshot.documents.mapNotNull { document ->
+                val cat = document.toObject(Category::class.java)
+                cat?.copy(id = document.id)
             }
+            categories = list
         }
     }
 
-    // 2. Hàm Thêm Thể loại mới
     fun addCategory(name: String, imageUrl: String) {
         val newDocRef = db.collection("categories").document()
         val newCategory = hashMapOf(
@@ -89,7 +97,6 @@ class AdminViewModel : ViewModel() {
         newDocRef.set(newCategory)
     }
 
-    // 3. Hàm Sửa Thể loại
     fun updateCategory(id: String, newName: String, newImageUrl: String) {
         db.collection("categories").document(id)
             .update(
@@ -100,38 +107,121 @@ class AdminViewModel : ViewModel() {
             )
     }
 
-    // 4. Hàm Xóa Thể loại
     fun deleteCategory(id: String) {
         db.collection("categories").document(id).delete()
     }
+
     fun loadAllSongs() {
-        viewModelScope.launch {
-            db.collection("songs")
-                .addSnapshotListener { snapshot, error ->
-                    if (error != null || snapshot == null) return@addSnapshotListener
-                    val list = snapshot.documents.mapNotNull { document ->
-                        val song = document.toObject(Song::class.java)
-                        song?.copy(songId = document.id)
-                    }
-                    allSongs = list
+        songsListener?.remove()
+        songsListener = db.collection("songs")
+            .orderBy("createdAt", com.google.firebase.firestore.Query.Direction.DESCENDING)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null || snapshot == null) return@addSnapshotListener
+                val list = snapshot.documents.mapNotNull { document ->
+                    val song = document.toObject(Song::class.java)
+                    song?.copy(songId = document.id)
                 }
+                allSongs = list
+            }
+    }
+
+    fun approveSong(songId: String) {
+        if (songId.isBlank()) return
+        db.collection("songs").document(songId).update("status", "approved")
+            .addOnSuccessListener {
+                // Cập nhật local state ngay lập tức
+                allSongs = allSongs.map {
+                    if (it.songId == songId) it.copy().apply { status = "approved" } else it
+                }
+            }
+    }
+
+    fun rejectSong(songId: String) {
+        if (songId.isBlank()) return
+        db.collection("songs").document(songId).update("status", "rejected")
+            .addOnSuccessListener {
+                // Cập nhật local state ngay lập tức
+                allSongs = allSongs.map {
+                    if (it.songId == songId) it.copy().apply { status = "rejected" } else it
+                }
+            }
+    }
+
+    fun updateSongStatus(songId: String, newStatus: String) {
+        db.collection("songs").document(songId).update("status", newStatus)
+    }
+
+    fun editSong(songId: String, title: String, genre: String) {
+        db.collection("songs").document(songId).update(
+            mapOf(
+                "title" to title,
+                "genre" to genre
+            )
+        )
+    }
+
+    // --- QUẢN LÝ USER ---
+    fun loadAllUsers() {
+        usersListener?.remove()
+        usersListener = db.collection("users").addSnapshotListener { snapshot, _ ->
+            if (snapshot != null) {
+                // ĐÃ SỬA: Map thủ công để đảm bảo lấy đúng ID từ document gán vào trường uid
+                allUsers = snapshot.documents.mapNotNull { doc ->
+                    doc.toObject(User::class.java)?.copy(uid = doc.id)
+                }
+            }
         }
     }
 
-    // 2. Hàm Duyệt bài hát (Chuyển thành approved)
-    fun approveSong(songId: String) {
-        db.collection("songs").document(songId).update("status", "approved")
+    fun updateUserRole(userId: String, newRole: String) {
+        db.collection("users").document(userId).update("role", newRole)
     }
 
-    // 3. Hàm Từ chối bài hát (Chuyển thành rejected)
-    fun rejectSong(songId: String) {
-        db.collection("songs").document(songId).update("status", "rejected")
-    }
-    fun updateSongStatus(songId: String, newStatus: String) {
-        db.collection("songs").document(songId)
-            .update("status", newStatus)
-            .addOnSuccessListener {
-                // Có thể thêm Toast báo thành công nếu muốn
+    fun toggleUserLock(userId: String, isLocked: Boolean) {
+        if (userId.isBlank()) return
+        
+        // Cập nhật Local State trước để UI thay đổi ngay lập tức (Optimistic UI)
+        allUsers = allUsers.map { 
+            if (it.uid == userId) {
+                // Tạo bản sao mới với thuộc tính isLocked đã thay đổi
+                it.copy().apply { this.isLocked = isLocked }
+            } else it 
+        }
+
+        db.collection("users").document(userId)
+            .update("isLocked", isLocked)
+            .addOnFailureListener { e ->
+                // Nếu lỗi thì hoàn tác (rollback) trạng thái local
+                allUsers = allUsers.map { 
+                    if (it.uid == userId) {
+                        it.copy().apply { this.isLocked = !isLocked }
+                    } else it
+                }
+                e.printStackTrace()
             }
+    }
+
+    fun toggleUserPremium(userId: String, isPremium: Boolean) {
+        db.collection("users").document(userId).update("premium", isPremium)
+    }
+
+    // --- QUẢN LÝ GIAO DỊCH ---
+    fun loadAllTransactions() {
+        transactionsListener?.remove()
+        transactionsListener = db.collection("transactions")
+            .orderBy("createdAt", com.google.firebase.firestore.Query.Direction.DESCENDING)
+            .addSnapshotListener { snapshot, _ ->
+                if (snapshot != null) {
+                    allTransactions = snapshot.toObjects(Transaction::class.java)
+                }
+            }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        categoriesListener?.remove()
+        songsListener?.remove()
+        usersListener?.remove()
+        transactionsListener?.remove()
     }
 }

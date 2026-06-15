@@ -75,9 +75,13 @@ fun NavGraph(
                             .addOnSuccessListener { document ->
                                 // Lấy chuỗi role về, nếu trên firebase trống thì mặc định là "user"
                                 val role = document.getString("role") ?: "user"
+                                val isLocked = document.getBoolean("isLocked") ?: false
 
                                 // 3. Phân luồng dựa theo Role thực tế trên Database
-                                if (role == "admin") {
+                                if (isLocked) {
+                                    authViewModel.logout()
+                                    authViewModel.setErrorMessage("Tài khoản của bạn đã bị khóa. Vui lòng liên hệ Admin.")
+                                } else if (role == "admin") {
                                     navController.navigate(Screen.AdminDashboard.route) {
                                         popUpTo(Screen.Login.route) { inclusive = true }
                                     }

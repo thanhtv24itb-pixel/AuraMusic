@@ -102,8 +102,8 @@ fun AdminMainScreen(navController: NavController, authViewModel: AuthViewModel,a
                     "dashboard" -> AdminDashboardScreen(viewModel = adminViewModel) // Gọi màn hình Tổng quan xịn xò vào đây
                     "categories" -> AdminCategoryScreen(viewModel = adminViewModel)
                     "songs" -> AdminSongScreen(viewModel = adminViewModel)
-                    "users" -> Text("Danh sách User sẽ vẽ ở đây")
-                    "transactions" -> Text("Bảng đối soát tiền SePay sẽ vẽ ở đây")
+                    "users" -> AdminUserScreen(viewModel = adminViewModel)
+                    "transactions" -> AdminTransactionScreen(viewModel = adminViewModel)
                 }
             }
         }
