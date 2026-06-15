@@ -78,7 +78,7 @@ class SongViewModel(
     private fun observeHomeData() {
         viewModelScope.launch {
             _songState.value = _songState.value.copy(isLoading = true)
-            
+
             // Theo dõi bài hát nghe nhiều nhất
             launch {
                 getMostPlayedSongsUseCase().collectLatest { songs ->

@@ -349,7 +349,11 @@ class SongRepositoryImpl(
             for (id in songIds) {
                 val songSnap = firestore.collection("songs").document(id).get().await()
                 val song = songSnap.toObject(Song::class.java)
-                if (song != null) songs.add(song)
+
+                // ĐÃ SỬA: Bắt buộc bài hát tồn tại VÀ phải đang được duyệt (approved)
+                if (song != null && song.status == "approved") {
+                    songs.add(song)
+                }
             }
             Result.success(songs)
         }
@@ -413,7 +417,11 @@ class SongRepositoryImpl(
             for (id in songIds) {
                 val songSnap = firestore.collection("songs").document(id).get().await()
                 val song = songSnap.toObject(Song::class.java)
-                if (song != null) songs.add(song)
+
+                // ĐÃ SỬA: Lịch sử cũng chỉ hiện những bài hát còn hợp lệ
+                if (song != null && song.status == "approved") {
+                    songs.add(song)
+                }
             }
             Result.success(songs)
         }
