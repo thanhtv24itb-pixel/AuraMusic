@@ -77,20 +77,31 @@ class SongRepositoryImpl(
     }
 
     override suspend fun searchSongs(query: String): Result<List<Song>> = try {
+        // Lấy tất cả bài hát hợp lệ
         val snapshot = firestore.collection("songs")
             .whereEqualTo("status", "approved")
-            .whereGreaterThanOrEqualTo("title", query)
-            .whereLessThanOrEqualTo("title", query + "\uf8ff")
             .get()
             .await()
+
         val songs = snapshot.documents.mapNotNull { doc ->
             doc.toObject(Song::class.java)?.apply { songId = doc.id }
         }
-        Result.success(songs)
+
+        // Lọc cục bộ không phân biệt hoa thường (ignoreCase = true)
+        // Tìm cả theo Tên bài hát HOẶC Tên tác giả
+        val filteredSongs = if (query.isBlank()) {
+            emptyList()
+        } else {
+            songs.filter {
+                it.title.contains(query, ignoreCase = true) ||
+                        it.artistName.contains(query, ignoreCase = true)
+            }
+        }
+
+        Result.success(filteredSongs)
     } catch (e: Exception) {
         Result.failure(e)
     }
-
     override suspend fun getCategories(): Result<List<Category>> = try {
         val snapshot = firestore.collection("categories").get().await()
         Result.success(snapshot.toObjects(Category::class.java))
@@ -462,4 +473,53 @@ class SongRepositoryImpl(
             }
         awaitClose { subscription.remove() }
     }
+    override suspend fun deletePlaylist(playlistId: String): Result<Boolean> = try {
+        firestore.collection("playlists").document(playlistId).delete().await()
+        Result.success(true)
+    } catch (e: Exception) {
+        Result.failure(e)
+    }
+
+    override suspend fun removeSongFromPlaylist(playlistId: String, songId: String): Result<Boolean> = try {
+        firestore.collection("playlists").document(playlistId)
+            .update("songIds", FieldValue.arrayRemove(songId)) // Gỡ ID bài hát ra khỏi mảng một cách an toàn
+            .await()
+        Result.success(true)
+    } catch (e: Exception) {
+        Result.failure(e)
+    }
+    override suspend fun deleteSong(songId: String, artistId: String): Result<Unit> = try {
+        firestore.runTransaction { transaction ->
+            val songRef = firestore.collection("songs").document(songId)
+            val artistRef = firestore.collection("users").document(artistId)
+
+            // 1. Soft Delete: Đổi trạng thái bài hát thành "deleted" để nó tàng hình khỏi app
+            transaction.update(songRef, "status", "deleted")
+
+            // 2. Trả lại lượt Upload cho Tác giả
+            val artistSnapshot = transaction.get(artistRef)
+            val currentUploads = artistSnapshot.getLong("uploadedCount") ?: 0
+            if (currentUploads > 0) {
+                transaction.update(artistRef, "uploadedCount", currentUploads - 1)
+            }
+
+            // Lưu ý: Không đá động gì tới trường "totalPlays", giữ nguyên thành tích cho họ
+        }.await()
+        Result.success(Unit)
+    } catch (e: Exception) {
+        Result.failure(e)
+    }
+    override suspend fun rejectSong(songId: String, reason: String): Result<Unit> = try {
+        firestore.collection("songs").document(songId)
+            .update(
+                mapOf(
+                    "status" to "rejected",
+                    "rejectReason" to reason // Lưu thêm dòng lý do vào Database
+                )
+            ).await()
+        Result.success(Unit)
+    } catch (e: Exception) {
+        Result.failure(e)
+    }
+
 }

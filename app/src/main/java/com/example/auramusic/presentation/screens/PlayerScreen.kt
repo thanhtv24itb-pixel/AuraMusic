@@ -81,7 +81,10 @@ fun PlayerScreen(
 
     Scaffold { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().background(backgroundBrush).padding(24.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .background(backgroundBrush)
+                .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Header
@@ -130,7 +133,9 @@ fun PlayerScreen(
                 colors = SliderDefaults.colors(thumbColor = MaterialTheme.colorScheme.secondary, activeTrackColor = MaterialTheme.colorScheme.secondary)
             )
 
-            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Row(modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text(formatTime(state.currentPosition), style = MaterialTheme.typography.bodySmall)
                 IconButton(onClick = { showTimerDialog = true }) { Icon(Icons.Default.Timer, contentDescription = "Hẹn giờ", tint = MaterialTheme.colorScheme.primary) }
                 Text(formatTime(durationInSeconds), style = MaterialTheme.typography.bodySmall)
@@ -154,7 +159,9 @@ fun PlayerScreen(
     // Modal Hẹn giờ
     if (showTimerDialog) {
         ModalBottomSheet(onDismissRequest = { showTimerDialog = false }) {
-            Column(modifier = Modifier.padding(16.dp).fillMaxWidth()) {
+            Column(modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth()) {
                 Text("Hẹn giờ tắt nhạc", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 TextButton(onClick = { viewModel.startSleepTimerByMinutes(15); showTimerDialog = false }) { Text("Sau 15 phút") }
                 TextButton(onClick = { viewModel.startSleepTimerByMinutes(30); showTimerDialog = false }) { Text("Sau 30 phút") }
@@ -209,17 +216,27 @@ fun PlayerScreen(
 @Composable
 fun CommentSection(comments: List<com.example.auramusic.domain.model.Comment>, onSendComment: (String) -> Unit) {
     var commentText by remember { mutableStateOf("") }
-    Box(modifier = Modifier.fillMaxHeight(0.8f).fillMaxWidth().glassmorphism(color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f))) {
-        Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
+    Box(modifier = Modifier
+        .fillMaxHeight(0.8f)
+        .fillMaxWidth()
+        .glassmorphism(color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f))) {
+        Column(modifier = Modifier
+            .fillMaxSize()
+            .padding(20.dp)) {
             Text("Bình luận (${comments.size})", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
             Spacer(modifier = Modifier.height(16.dp))
             if (comments.isEmpty()) {
-                Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { Text("Chưa có bình luận nào. Hãy là người đầu tiên!") }
+                Box(modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(), contentAlignment = Alignment.Center) { Text("Chưa có bình luận nào. Hãy là người đầu tiên!") }
             } else {
                 LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) { items(comments) { comment -> CommentItem(comment) } }
             }
             Spacer(modifier = Modifier.height(16.dp))
-            Row(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(24.dp)).padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(24.dp))
+                .padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 TextField(value = commentText, onValueChange = { commentText = it }, placeholder = { Text("Thêm bình luận...") }, modifier = Modifier.weight(1f), colors = TextFieldDefaults.colors(focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent, focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent))
                 IconButton(onClick = { if (commentText.isNotBlank()) { onSendComment(commentText); commentText = "" } }) { Icon(Icons.AutoMirrored.Filled.Comment, contentDescription = "Send", tint = MaterialTheme.colorScheme.primary) }
             }
@@ -230,7 +247,9 @@ fun CommentSection(comments: List<com.example.auramusic.domain.model.Comment>, o
 @Composable
 fun CommentItem(comment: com.example.auramusic.domain.model.Comment) {
     Row(modifier = Modifier.fillMaxWidth()) {
-        AsyncImage(model = comment.userAvatar.ifBlank { "https://cdn-icons-png.flaticon.com/512/149/149071.png" }, contentDescription = null, modifier = Modifier.size(40.dp).clip(CircleShape), contentScale = ContentScale.Crop)
+        AsyncImage(model = comment.userAvatar.ifBlank { "https://cdn-icons-png.flaticon.com/512/149/149071.png" }, contentDescription = null, modifier = Modifier
+            .size(40.dp)
+            .clip(CircleShape), contentScale = ContentScale.Crop)
         Spacer(modifier = Modifier.width(12.dp))
         Column {
             Text(comment.userName, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
@@ -243,14 +262,19 @@ fun CommentItem(comment: com.example.auramusic.domain.model.Comment) {
 @Composable
 fun PlaylistSelectSection(viewModel: SongViewModel, onPlaylistSelected: (String) -> Unit) {
     val myPlaylists by viewModel.myPlaylists.collectAsState()
-    Column(modifier = Modifier.fillMaxHeight(0.5f).padding(16.dp)) {
+    Column(modifier = Modifier
+        .fillMaxHeight(0.5f)
+        .padding(16.dp)) {
         Text("Thêm vào danh sách phát", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 16.dp))
         if (myPlaylists.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Bạn chưa có danh sách phát nào.\nHãy tạo ở tab Thư viện!", color = Color.Gray, fontSize = 14.sp) }
         } else {
             LazyColumn {
                 items(myPlaylists) { playlist ->
-                    Row(modifier = Modifier.fillMaxWidth().clickable { onPlaylistSelected(playlist.playlistId) }.padding(vertical = 12.dp, horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onPlaylistSelected(playlist.playlistId) }
+                        .padding(vertical = 12.dp, horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.PlaylistAdd, contentDescription = null, tint = Color.Gray)
                         Spacer(modifier = Modifier.width(16.dp))
                         Column {

@@ -129,20 +129,31 @@ class AdminViewModel : ViewModel() {
         if (songId.isBlank()) return
         db.collection("songs").document(songId).update("status", "approved")
             .addOnSuccessListener {
-                // Cập nhật local state ngay lập tức
                 allSongs = allSongs.map {
                     if (it.songId == songId) it.copy().apply { status = "approved" } else it
                 }
             }
     }
 
-    fun rejectSong(songId: String) {
+    // ĐÃ SỬA: Hàm từ chối cập nhật trạng thái và lý do bằng cách dùng biến db có sẵn
+    fun rejectSong(songId: String, reason: String) {
         if (songId.isBlank()) return
-        db.collection("songs").document(songId).update("status", "rejected")
+        db.collection("songs").document(songId)
+            .update(
+                mapOf(
+                    "status" to "rejected",
+                    "rejectReason" to reason // Đẩy lý do lên database
+                )
+            )
             .addOnSuccessListener {
-                // Cập nhật local state ngay lập tức
+                // Cập nhật lại giao diện ngay lập tức
                 allSongs = allSongs.map {
-                    if (it.songId == songId) it.copy().apply { status = "rejected" } else it
+                    if (it.songId == songId) {
+                        it.copy().apply {
+                            status = "rejected"
+                            // Firebase Snapshot listener cũng sẽ tự fetch và đồng bộ lại rejectReason nếu ở giao diện khác
+                        }
+                    } else it
                 }
             }
     }
@@ -165,7 +176,6 @@ class AdminViewModel : ViewModel() {
         usersListener?.remove()
         usersListener = db.collection("users").addSnapshotListener { snapshot, _ ->
             if (snapshot != null) {
-                // ĐÃ SỬA: Map thủ công để đảm bảo lấy đúng ID từ document gán vào trường uid
                 allUsers = snapshot.documents.mapNotNull { doc ->
                     doc.toObject(User::class.java)?.copy(uid = doc.id)
                 }
@@ -179,20 +189,17 @@ class AdminViewModel : ViewModel() {
 
     fun toggleUserLock(userId: String, isLocked: Boolean) {
         if (userId.isBlank()) return
-        
-        // Cập nhật Local State trước để UI thay đổi ngay lập tức (Optimistic UI)
-        allUsers = allUsers.map { 
+
+        allUsers = allUsers.map {
             if (it.uid == userId) {
-                // Tạo bản sao mới với thuộc tính isLocked đã thay đổi
                 it.copy().apply { this.isLocked = isLocked }
-            } else it 
+            } else it
         }
 
         db.collection("users").document(userId)
             .update("isLocked", isLocked)
             .addOnFailureListener { e ->
-                // Nếu lỗi thì hoàn tác (rollback) trạng thái local
-                allUsers = allUsers.map { 
+                allUsers = allUsers.map {
                     if (it.uid == userId) {
                         it.copy().apply { this.isLocked = !isLocked }
                     } else it

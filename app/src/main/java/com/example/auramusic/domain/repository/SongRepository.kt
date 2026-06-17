@@ -53,4 +53,8 @@ interface SongRepository {
     fun getComments(songId: String): Flow<List<Comment>>
     suspend fun getRecentlyPlayed(userId: String): Result<List<Song>>
     suspend fun incrementUploadedCount(uid: String): Result<Unit>
+    suspend fun deletePlaylist(playlistId: String): Result<Boolean>
+    suspend fun removeSongFromPlaylist(playlistId: String, songId: String): Result<Boolean>
+    suspend fun deleteSong(songId: String, artistId: String): Result<Unit>
+    suspend fun rejectSong(songId: String, reason: String): Result<Unit>
 }

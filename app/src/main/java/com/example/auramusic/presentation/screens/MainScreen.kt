@@ -338,6 +338,8 @@ fun LibraryContent(
 
         LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(myPlaylists) { playlist ->
+                var showDeleteConfirm by remember { mutableStateOf(false) }
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -366,10 +368,42 @@ fun LibraryContent(
                         Icon(Icons.Filled.PlaylistAdd, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Spacer(modifier = Modifier.width(16.dp))
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) { // Thêm weight(1f) để đẩy nút xóa về bên phải
                         Text(playlist.name, color = MaterialTheme.colorScheme.onBackground, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                         Text("${playlist.songIds.size} bài hát", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
                     }
+
+                    // NÚT XÓA PLAYLIST
+                    IconButton(onClick = { showDeleteConfirm = true }) {
+                        Icon(Icons.Default.Delete, contentDescription = "Xóa Playlist", tint = Color.Red.copy(alpha = 0.7f))
+                    }
+                }
+
+                // Hộp thoại xác nhận xóa Playlist
+                if (showDeleteConfirm) {
+                    AlertDialog(
+                        onDismissRequest = { showDeleteConfirm = false },
+                        title = { Text("Xóa danh sách phát") },
+                        text = { Text("Bạn có chắc chắn muốn xóa playlist \"${playlist.name}\"? Hành động này không thể hoàn tác.") },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    if (myUid != null) {
+                                        viewModel.deletePlaylist(playlist.playlistId, myUid, {
+                                            showDeleteConfirm = false
+                                            Toast.makeText(context, "Đã xóa playlist", Toast.LENGTH_SHORT).show()
+                                        }, {
+                                            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+                                        })
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                            ) { Text("Xóa", color = Color.White) }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showDeleteConfirm = false }) { Text("Hủy") }
+                        }
+                    )
                 }
             }
         }

@@ -1,6 +1,9 @@
 package com.example.auramusic.presentation.screens
 
 import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -11,14 +14,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Cancel
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Pending
-import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material.icons.outlined.ThumbUp
@@ -29,9 +32,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.example.auramusic.domain.model.Song
 import com.example.auramusic.domain.model.User
@@ -49,10 +56,11 @@ fun ProfileScreen(
     songViewModel: SongViewModel,
     onBackClick: () -> Unit,
     onLogoutClick: () -> Unit,
-    onNavigateToPremium: () -> Unit = {} // THÊM DÒNG NÀY ĐỂ CHUYỂN TRANG MUA VIP
+    onNavigateToPremium: () -> Unit = {}
 ) {
     val authState by authViewModel.authState.collectAsState()
     val myUid = authState.user?.uid
+    val context = LocalContext.current
 
     // Nếu userId truyền vào bị rỗng hoặc trùng với myUid thì hiểu là đang xem trang của mình
     val isMyProfile = (userId.isBlank() || userId == myUid)
@@ -73,7 +81,10 @@ fun ProfileScreen(
             }
         ) { paddingValues ->
             Column(
-                modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(paddingValues),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background)
+                    .padding(paddingValues),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
@@ -94,22 +105,24 @@ fun ProfileScreen(
         }
         return
     }
-    // =========================================================================
 
-    // NẾU ĐÃ ĐĂNG NHẬP HOẶC ĐANG XEM TRANG NGƯỜI KHÁC THÌ CHẠY CODE BÌNH THƯỜNG DƯỚI ĐÂY:
+    // =========================================================================
+    // NẾU ĐÃ ĐĂNG NHẬP HOẶC ĐANG XEM TRANG NGƯỜI KHÁC
+    // =========================================================================
 
     val user by userViewModel.artistProfile.collectAsState()
     val isLiked by userViewModel.isArtistLiked.collectAsState()
     val songState by songViewModel.songState.collectAsState()
     val userSongs by authViewModel.userSongs.collectAsState()
-    
-    // ĐÃ SỬA: Lấy toàn bộ bài hát của artist này thay vì chỉ lấy từ list recent
+
     val artistSongs = songState.artistSongs
 
     var showEditDialog by remember { mutableStateOf(false) }
     var showNotifications by remember { mutableStateOf(false) }
 
-    // Gọi Firebase load dữ liệu khi vào trang
+    // Biến trạng thái để chứa bài hát đang muốn xóa từ màn hình thông báo
+    var songToDeleteFromNotification by remember { mutableStateOf<Song?>(null) }
+
     LaunchedEffect(userId) {
         userViewModel.loadArtistProfile(userId, myUid)
         songViewModel.loadSongsByArtist(userId)
@@ -126,7 +139,8 @@ fun ProfileScreen(
                     if (isMyProfile) {
                         IconButton(onClick = { showNotifications = true }) {
                             BadgedBox(badge = {
-                                if (userSongs.any { it.status != "approved" }) {
+                                // Chỉ báo đỏ nếu có bài hát CHƯA XÓA mà bị reject hoặc pending
+                                if (userSongs.any { it.status != "approved" && it.status != "deleted" }) {
                                     Badge()
                                 }
                             }) {
@@ -154,11 +168,14 @@ fun ProfileScreen(
         }
 
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(paddingValues).background(MaterialTheme.colorScheme.background).padding(16.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .background(MaterialTheme.colorScheme.background)
+                .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             item {
-                // 1. GẮN VIỀN VÀNG CHO AVATAR NẾU LÀ VIP
                 val avatarModifier = Modifier
                     .size(100.dp)
                     .clip(CircleShape)
@@ -175,7 +192,6 @@ fun ProfileScreen(
                 )
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // 2. GẮN HUY HIỆU PREMIUM BÊN CẠNH TÊN
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
                     Text(user?.displayName ?: "Người dùng", color = MaterialTheme.colorScheme.onBackground, fontSize = 22.sp, fontWeight = FontWeight.Bold)
 
@@ -198,7 +214,6 @@ fun ProfileScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // 3. NÚT NÂNG CẤP VIP DÀNH CHO CHỦ SỞ HỮU TRANG (NẾU CHƯA LÀ VIP)
                 if (isMyProfile) {
                     if (user?.premium == true) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -224,18 +239,18 @@ fun ProfileScreen(
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                         Button(
                             onClick = { if (myUid != null) userViewModel.toggleLikeArtist(myUid, userId) },
-                            colors = ButtonDefaults.buttonColors(containerColor = if (isLiked) MaterialTheme.colorScheme.primary else Color.DarkGray, contentColor = Color.White),
-                            modifier = Modifier.padding(end = 8.dp)
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isLiked) MaterialTheme.colorScheme.primary else Color.DarkGray,
+                                contentColor = Color.White
+                            )
                         ) {
-                            Icon(imageVector = if (isLiked) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp, contentDescription = "Like", modifier = Modifier.size(18.dp))
+                            Icon(
+                                imageVector = if (isLiked) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp,
+                                contentDescription = "Like",
+                                modifier = Modifier.size(18.dp)
+                            )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(if (isLiked) "Đã Thích" else "Thích")
-                        }
-
-                        Button(onClick = { }, colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray, contentColor = Color.White)) {
-                            Icon(Icons.Default.PersonAdd, contentDescription = "Follow", modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Theo dõi")
                         }
                     }
                     Spacer(modifier = Modifier.height(16.dp))
@@ -244,7 +259,6 @@ fun ProfileScreen(
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                     ProfileStat("Lượt thích", user?.totalLikesReceived ?: 0)
                     ProfileStat("Lượt nghe", user?.totalPlays ?: 0)
-                    ProfileStat("Followers", user?.followerCount ?: 0)
                 }
                 Spacer(modifier = Modifier.height(32.dp))
                 Text(if (isMyProfile) "Bài hát của tôi" else "Bài hát của tác giả", color = MaterialTheme.colorScheme.onBackground, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth())
@@ -253,23 +267,39 @@ fun ProfileScreen(
 
             // Lọc danh sách hiển thị
             val displayedSongs = if (isMyProfile) {
-                artistSongs // Hiện tất cả bài của mình
+                artistSongs.filter { it.status != "deleted" } // Hiện tất cả bài chưa xóa
             } else {
-                artistSongs.filter { it.status == "approved" } // Chỉ hiện bài đã duyệt cho khách
+                artistSongs.filter { it.status == "approved" } // Khách chỉ thấy bài đã duyệt
             }
 
             if (displayedSongs.isEmpty()) {
                 item { Text("Chưa có bài hát nào", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 20.dp)) }
             } else {
                 items(displayedSongs) { song ->
-                    Box {
-                        SongItem(song = song, onPlayClick = { 
-                            if (song.status == "approved") {
-                                songViewModel.playSong(song) 
+                    var showDeleteConfirm by remember { mutableStateOf(false) }
+
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(modifier = Modifier.weight(1f)) {
+                                SongItem(song = song, onPlayClick = {
+                                    if (song.status == "approved") {
+                                        songViewModel.playSong(song)
+                                    }
+                                })
                             }
-                        })
-                        
-                        // Nếu là bài của mình và chưa duyệt thì hiện badge nhỏ
+
+                            // NÚT XÓA Ở NGOÀI DANH SÁCH BÀI HÁT PROFILE
+                            if (isMyProfile) {
+                                IconButton(onClick = { showDeleteConfirm = true }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = "Xóa bài hát",
+                                        tint = Color.Red.copy(alpha = 0.7f)
+                                    )
+                                }
+                            }
+                        }
+
                         if (isMyProfile && song.status != "approved") {
                             Surface(
                                 color = if (song.status == "rejected") Color.Red else Color(0xFFF59E0B),
@@ -286,6 +316,38 @@ fun ProfileScreen(
                             }
                         }
                     }
+
+                    // HỘP THOẠI XÁC NHẬN XÓA TỪ PROFILE
+                    if (showDeleteConfirm) {
+                        AlertDialog(
+                            onDismissRequest = { showDeleteConfirm = false },
+                            title = { Text("Xóa bài hát") },
+                            text = { Text("Bạn có chắc chắn muốn gỡ bài hát \"${song.title}\"? Bạn sẽ được hoàn lại 1 lượt tải lên.") },
+                            confirmButton = {
+                                Button(
+                                    onClick = {
+                                        if (myUid != null) {
+                                            songViewModel.deleteSong(
+                                                songId = song.songId,
+                                                artistId = myUid,
+                                                onSuccess = {
+                                                    showDeleteConfirm = false
+                                                    Toast.makeText(context, "Đã xóa bài hát", Toast.LENGTH_SHORT).show()
+                                                },
+                                                onError = { errorMsg ->
+                                                    Toast.makeText(context, errorMsg, Toast.LENGTH_SHORT).show()
+                                                }
+                                            )
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                                ) { Text("Xóa", color = Color.White) }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { showDeleteConfirm = false }) { Text("Hủy") }
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -301,10 +363,48 @@ fun ProfileScreen(
             )
         }
 
+        // =====================================================================
+        // MÀN HÌNH THÔNG BÁO TÍCH HỢP XÓA
+        // =====================================================================
         if (showNotifications) {
             NotificationDialog(
-                songs = userSongs,
-                onDismiss = { showNotifications = false }
+                songs = userSongs.filter { it.status != "deleted" },
+                onDismiss = { showNotifications = false },
+                onDeleteClick = { song ->
+                    songToDeleteFromNotification = song
+                }
+            )
+        }
+
+        // HỘP THOẠI XÁC NHẬN XÓA TỪ THÔNG BÁO
+        if (songToDeleteFromNotification != null) {
+            AlertDialog(
+                onDismissRequest = { songToDeleteFromNotification = null },
+                title = { Text("Xóa bài hát") },
+                text = { Text("Bạn có chắc chắn muốn gỡ bài hát \"${songToDeleteFromNotification!!.title}\"? Bạn sẽ được hoàn lại 1 lượt tải lên.") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            if (myUid != null) {
+                                songViewModel.deleteSong(
+                                    songId = songToDeleteFromNotification!!.songId,
+                                    artistId = myUid,
+                                    onSuccess = {
+                                        songToDeleteFromNotification = null
+                                        Toast.makeText(context, "Đã xóa bài hát", Toast.LENGTH_SHORT).show()
+                                    },
+                                    onError = { errorMsg ->
+                                        Toast.makeText(context, errorMsg, Toast.LENGTH_SHORT).show()
+                                    }
+                                )
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                    ) { Text("Xóa", color = Color.White) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { songToDeleteFromNotification = null }) { Text("Hủy") }
+                }
             )
         }
     }
@@ -341,49 +441,170 @@ fun EditProfileDialog(
 }
 
 @Composable
-fun NotificationDialog(songs: List<Song>, onDismiss: () -> Unit) {
-    AlertDialog(
+fun NotificationDialog(
+    songs: List<Song>,
+    onDismiss: () -> Unit,
+    onDeleteClick: (Song) -> Unit
+) {
+    Dialog(
         onDismissRequest = onDismiss,
-        title = { Text("Thông báo bài hát") },
-        text = {
-            LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
-                items(songs) { song ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = when(song.status) {
-                                "approved" -> Icons.Default.CheckCircle
-                                "rejected" -> Icons.Default.Cancel
-                                else -> Icons.Default.Pending
-                            },
-                            contentDescription = null,
-                            tint = when(song.status) {
-                                "approved" -> Color(0xFF10B981)
-                                "rejected" -> Color.Red
-                                else -> Color(0xFFF59E0B)
-                            }
-                        )
-                        Spacer(Modifier.width(12.dp))
-                        Column {
-                            Text(song.title, fontWeight = FontWeight.Bold)
-                            Text(
-                                text = when(song.status) {
-                                    "approved" -> "Đã được duyệt"
-                                    "rejected" -> "Bị từ chối"
-                                    else -> "Đang chờ duyệt"
-                                },
-                                fontSize = 12.sp,
-                                color = Color.Gray
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.95f)
+                .fillMaxHeight(0.85f)
+                .padding(16.dp),
+            shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 8.dp
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                // ================================
+                // HEADER
+                // ================================
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 20.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "🔔 Trung tâm Thông báo",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Đóng", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                // ================================
+                // BODY
+                // ================================
+                if (songs.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                Icons.Default.NotificationsOff,
+                                contentDescription = null,
+                                modifier = Modifier.size(64.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                             )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                "Bạn không có thông báo nào.",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 16.sp
+                            )
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp)
+                    ) {
+                        items(songs) { song ->
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                shape = RoundedCornerShape(20.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                                )
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // 1. ICON TRẠNG THÁI
+                                    Box(
+                                        modifier = Modifier
+                                            .size(52.dp)
+                                            .clip(CircleShape)
+                                            .background(
+                                                when (song.status) {
+                                                    "approved" -> Color(0xFF10B981).copy(alpha = 0.15f)
+                                                    "rejected" -> Color.Red.copy(alpha = 0.15f)
+                                                    else -> Color(0xFFF59E0B).copy(alpha = 0.15f)
+                                                }
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = when (song.status) {
+                                                "approved" -> Icons.Default.CheckCircle
+                                                "rejected" -> Icons.Default.Cancel
+                                                else -> Icons.Default.Pending
+                                            },
+                                            contentDescription = null,
+                                            tint = when (song.status) {
+                                                "approved" -> Color(0xFF10B981)
+                                                "rejected" -> Color.Red
+                                                else -> Color(0xFFF59E0B)
+                                            },
+                                            modifier = Modifier.size(30.dp)
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.width(16.dp))
+
+                                    // 2. NỘI DUNG THÔNG BÁO CHI TIẾT
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Bài hát: ${song.title}",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 16.sp,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Spacer(modifier = Modifier.height(6.dp))
+
+                                        // CHỖ NÀY ĐÃ ĐƯỢC THAY ĐỔI ĐỂ HIỂN THỊ LÝ DO (REJECT REASON) TỪ FIREBASE
+                                        Text(
+                                            text = when (song.status) {
+                                                "approved" -> "🎉 Admin đã duyệt bài hát của bạn. Mọi người đã có thể lắng nghe!"
+                                                "rejected" -> "❌ Từ chối: ${song.rejectReason ?: "File âm thanh bị lỗi hoặc vi phạm quy định."}"
+                                                else -> "⏳ Bài hát đang trong hàng chờ kiểm duyệt."
+                                            },
+                                            fontSize = 13.sp,
+                                            color = when (song.status) {
+                                                "approved" -> Color(0xFF10B981)
+                                                "rejected" -> Color.Red
+                                                else -> Color(0xFFF59E0B)
+                                            },
+                                            fontWeight = FontWeight.Medium,
+                                            lineHeight = 18.sp
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.width(8.dp))
+
+                                    // 3. NÚT XÓA Ở BÊN PHẢI CÙNG
+                                    IconButton(
+                                        onClick = { onDeleteClick(song) },
+                                        modifier = Modifier.background(Color.Red.copy(alpha = 0.1f), CircleShape)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Delete,
+                                            contentDescription = "Xóa",
+                                            tint = Color.Red.copy(alpha = 0.8f)
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
-        },
-        confirmButton = { Button(onClick = onDismiss) { Text("Đóng") } }
-    )
+        }
+    }
 }
 
 @Composable

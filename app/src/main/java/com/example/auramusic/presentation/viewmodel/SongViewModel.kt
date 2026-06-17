@@ -9,12 +9,14 @@ import com.example.auramusic.domain.model.Song
 import com.example.auramusic.domain.model.Comment
 import com.example.auramusic.domain.repository.SongRepository
 import com.example.auramusic.domain.usecase.*
+import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 data class SongUiState(
     val isLoading: Boolean = false,
@@ -331,4 +333,56 @@ class SongViewModel(
             }
         }
     }
+    fun deletePlaylist(playlistId: String, userId: String, onSuccess: () -> Unit, onError: (String) -> Unit) {
+        viewModelScope.launch {
+            songRepository.deletePlaylist(playlistId).onSuccess {
+                loadMyPlaylists(userId) // Tải lại danh sách playlist của tôi
+                onSuccess()
+            }.onFailure { e ->
+                onError(e.message ?: "Lỗi khi xóa Playlist")
+            }
+        }
+    }
+
+    fun removeSongFromPlaylist(playlistId: String, songId: String, onSuccess: () -> Unit, onError: (String) -> Unit) {
+        viewModelScope.launch {
+            songRepository.removeSongFromPlaylist(playlistId, songId).onSuccess {
+                loadSongsInPlaylist(playlistId) // Tải lại danh sách bài hát bên trong playlist này
+                onSuccess()
+            }.onFailure { e ->
+                onError(e.message ?: "Lỗi khi gỡ bài hát khỏi Playlist")
+            }
+        }
+    }
+    fun deleteSong(songId: String, artistId: String, onSuccess: () -> Unit, onError: (String) -> Unit) {
+        viewModelScope.launch {
+            _songState.value = _songState.value.copy(isLoading = true) // Hiện vòng xoay tải
+            songRepository.deleteSong(songId, artistId).onSuccess {
+                loadSongsByArtist(artistId) // Tải lại danh sách bài hát của Profile
+                _songState.value = _songState.value.copy(isLoading = false) // Tắt vòng xoay
+                onSuccess()
+            }.onFailure { e ->
+                _songState.value = _songState.value.copy(isLoading = false)
+                onError(e.message ?: "Lỗi khi xóa bài hát")
+            }
+        }
+    }
+    fun deleteComment(songId: String, commentId: String, onSuccess: () -> Unit, onError: (String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                // Xóa document trong sub-collection "comments"
+                FirebaseFirestore.getInstance()
+                    .collection("songs").document(songId)
+                    .collection("comments").document(commentId)
+                    .delete()
+                    .await()
+                // Tải lại danh sách comment sau khi xóa
+                loadComments(songId)
+                onSuccess()
+            } catch (e: Exception) {
+                onError(e.message ?: "Lỗi khi xóa bình luận")
+            }
+        }
+    }
+
 }

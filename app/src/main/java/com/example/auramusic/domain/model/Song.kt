@@ -20,5 +20,6 @@ data class Song(
     
     @get:PropertyName("status")
     @set:PropertyName("status")
-    var status: String = "pending"
+    var status: String = "pending",
+    val rejectReason: String? = null // THÊM DÒNG NÀY (Để lưu lý do)
 )
