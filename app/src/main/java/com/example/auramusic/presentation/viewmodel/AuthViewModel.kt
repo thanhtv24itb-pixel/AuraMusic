@@ -9,6 +9,7 @@ import android.net.Uri
 import com.example.auramusic.domain.usecase.LoginUseCase
 import com.example.auramusic.domain.usecase.SignupUseCase
 import com.example.auramusic.domain.usecase.GoogleLoginUseCase
+import com.example.auramusic.domain.usecase.ResetPasswordUseCase
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
@@ -29,7 +30,8 @@ data class AuthUiState(
 class AuthViewModel(
     private val loginUseCase: LoginUseCase,
     private val signupUseCase: SignupUseCase,
-    private val googleLoginUseCase: GoogleLoginUseCase
+    private val googleLoginUseCase: GoogleLoginUseCase,
+    private val resetPasswordUseCase: ResetPasswordUseCase
 ) : ViewModel() {
 
     private val _authState = MutableStateFlow(AuthUiState())
@@ -100,6 +102,22 @@ class AuthViewModel(
                      error = exception.message ?: "Đăng nhập bằng Google thất bại",
                      isLoading = false
                  )
+             }
+         }
+     }
+
+     fun resetPassword(email: String, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
+         viewModelScope.launch {
+             _authState.value = AuthUiState(isLoading = true)
+             val result = resetPasswordUseCase(email)
+             _authState.value = AuthUiState(isLoading = false)
+             result.onSuccess {
+                 onSuccess()
+             }
+             result.onFailure { exception ->
+                 val errorMsg = exception.message ?: "Gửi email khôi phục thất bại"
+                 _authState.value = AuthUiState(error = errorMsg)
+                 onFailure(errorMsg)
              }
          }
      }

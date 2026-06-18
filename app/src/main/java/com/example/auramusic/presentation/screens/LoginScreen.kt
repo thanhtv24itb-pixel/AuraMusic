@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import com.example.auramusic.R
@@ -41,6 +42,8 @@ fun LoginScreen(
     val authState by viewModel.authState.collectAsState()
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var showResetDialog by remember { mutableStateOf(false) }
+    var resetEmail by remember { mutableStateOf("") }
     val context = LocalContext.current
     val serverClientId = stringResource(id = R.string.server_client_id)
 
@@ -147,6 +150,22 @@ fun LoginScreen(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
             )
 
+            // Forgot Password Link
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                Text(
+                    text = "Quên mật khẩu?",
+                    color = MaterialTheme.colorScheme.primary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.clickable { showResetDialog = true }
+                )
+            }
+
             // Error Message
             if (authState.error != null) {
                 Text(
@@ -228,5 +247,47 @@ fun LoginScreen(
                 )
             }
         }
+    }
+
+    // Reset Password Dialog
+    if (showResetDialog) {
+        AlertDialog(
+            onDismissRequest = { showResetDialog = false },
+            title = { Text("Khôi phục mật khẩu") },
+            text = {
+                Column {
+                    Text("Nhập email của bạn để nhận liên kết đặt lại mật khẩu.", modifier = Modifier.padding(bottom = 16.dp))
+                    OutlinedTextField(
+                        value = resetEmail,
+                        onValueChange = { resetEmail = it },
+                        label = { Text("Email") },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (resetEmail.isNotEmpty()) {
+                            viewModel.resetPassword(resetEmail, {
+                                Toast.makeText(context, "Đã gửi email khôi phục!", Toast.LENGTH_LONG).show()
+                                showResetDialog = false
+                            }, { error ->
+                                Toast.makeText(context, error, Toast.LENGTH_LONG).show()
+                            })
+                        }
+                    }
+                ) {
+                    Text("Gửi Email")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetDialog = false }) {
+                    Text("Hủy")
+                }
+            }
+        )
     }
 }

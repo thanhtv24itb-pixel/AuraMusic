@@ -59,7 +59,8 @@ class MainActivity : ComponentActivity() {
         val authViewModel = AuthViewModel(
             loginUseCase = LoginUseCase(authRepository),
             signupUseCase = SignupUseCase(authRepository),
-            googleLoginUseCase = GoogleLoginUseCase(authRepository)
+            googleLoginUseCase = GoogleLoginUseCase(authRepository),
+            resetPasswordUseCase = ResetPasswordUseCase(authRepository)
         )
 
         val songViewModel = SongViewModel(
