@@ -61,6 +61,7 @@ dependencies {
     implementation(libs.cloudinary.android)
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.ui)
+    implementation(libs.play.services.auth)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

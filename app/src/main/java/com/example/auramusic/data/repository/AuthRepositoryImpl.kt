@@ -4,11 +4,11 @@ import com.example.auramusic.domain.model.User
 import com.example.auramusic.domain.repository.AuthRepository
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.UserProfileChangeRequest
+import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.firestore.FirebaseFirestore // Thêm thư viện này
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.tasks.await
 
 class AuthRepositoryImpl(
@@ -84,49 +84,97 @@ class AuthRepositoryImpl(
         email: String,
         password: String,
         displayName: String
-    ): Result<User> = try {
-        // 1. Tạo tài khoản bên Firebase Authentication
-        val result = firebaseAuth.createUserWithEmailAndPassword(email, password).await()
-        val firebaseUser = result.user
+    ): Result<User> {
+        return try {
+            // 1. Tạo tài khoản bên Firebase Authentication
+            val result = firebaseAuth.createUserWithEmailAndPassword(email, password).await()
+            val firebaseUser = result.user
 
-        if (firebaseUser != null) {
-            // Cập nhật tên hiển thị
-            val profileUpdates = UserProfileChangeRequest.Builder()
-                .setDisplayName(displayName)
-                .build()
-            firebaseUser.updateProfile(profileUpdates).await()
+            if (firebaseUser != null) {
+                // Cập nhật tên hiển thị
+                val profileUpdates = UserProfileChangeRequest.Builder()
+                    .setDisplayName(displayName)
+                    .build()
+                firebaseUser.updateProfile(profileUpdates).await()
 
-            // 2. Tạo đối tượng User với đầy đủ thông tin
-            val newUser = User(
-                uid = firebaseUser.uid,
-                email = firebaseUser.email ?: "",
-                displayName = displayName,
-                avatarUrl = firebaseUser.photoUrl?.toString() ?: "",
-                createdAt = com.google.firebase.Timestamp.now()
-            )
+                // 2. Tạo đối tượng User với đầy đủ thông tin
+                val newUser = User(
+                    uid = firebaseUser.uid,
+                    email = firebaseUser.email ?: "",
+                    displayName = displayName,
+                    avatarUrl = firebaseUser.photoUrl?.toString() ?: "",
+                    createdAt = com.google.firebase.Timestamp.now()
+                )
 
-            // 3. LƯU ĐỐI TƯỢNG ĐÓ VÀO FIRESTORE (Tạo collection "users")
-            firestore.collection("users").document(firebaseUser.uid).set(newUser).await()
+                // 3. LƯU ĐỐI TƯỢNG ĐÓ VÀO FIRESTORE (Tạo collection "users")
+                firestore.collection("users").document(firebaseUser.uid).set(newUser).await()
 
-            Result.success(newUser)
-        } else {
-            Result.failure(Exception("Không thể tạo tài khoản"))
+                Result.success(newUser)
+            } else {
+                Result.failure(Exception("Không thể tạo tài khoản"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
         }
-    } catch (e: Exception) {
-        Result.failure(e)
     }
 
-    override suspend fun logout(): Result<Unit> = try {
-        firebaseAuth.signOut()
-        Result.success(Unit)
-    } catch (e: Exception) {
-        Result.failure(e)
+    override suspend fun loginWithGoogle(idToken: String, displayName: String): Result<User> {
+        return try {
+            // 1. Tạo credential từ Google ID token
+            val credential = GoogleAuthProvider.getCredential(idToken, null)
+
+            // 2. Đăng nhập bằng credential
+            val result = firebaseAuth.signInWithCredential(credential).await()
+            val firebaseUser = result.user
+
+            if (firebaseUser != null) {
+                // 3. Kiểm tra xem user đã tồn tại trong Firestore chưa
+                val snapshot = firestore.collection("users").document(firebaseUser.uid).get().await()
+
+                if (snapshot.exists()) {
+                    // User tồn tại, lấy thông tin từ Firestore
+                    val user = snapshot.toObject(User::class.java)
+                    if (user != null) {
+                        return Result.success(user)
+                    }
+                }
+
+                // 4. Nếu user chưa tồn tại, tạo mới
+                val newUser = User(
+                    uid = firebaseUser.uid,
+                    email = firebaseUser.email ?: "",
+                    displayName = displayName.ifEmpty { firebaseUser.displayName ?: "" },
+                    avatarUrl = firebaseUser.photoUrl?.toString() ?: "",
+                    createdAt = com.google.firebase.Timestamp.now()
+                )
+
+                // 5. Lưu vào Firestore
+                firestore.collection("users").document(firebaseUser.uid).set(newUser).await()
+
+                Result.success(newUser)
+            } else {
+                Result.failure(Exception("Không thể tạo tài khoản từ Google"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 
-    override suspend fun resetPassword(email: String): Result<Unit> = try {
-        firebaseAuth.sendPasswordResetEmail(email).await()
-        Result.success(Unit)
-    } catch (e: Exception) {
-        Result.failure(e)
+    override suspend fun logout(): Result<Unit> {
+        return try {
+            firebaseAuth.signOut()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun resetPassword(email: String): Result<Unit> {
+        return try {
+            firebaseAuth.sendPasswordResetEmail(email).await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 }

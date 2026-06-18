@@ -19,9 +19,17 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import com.example.auramusic.R
 import com.example.auramusic.presentation.components.glassmorphism
 import com.example.auramusic.presentation.components.neumorphic
 import com.example.auramusic.presentation.viewmodel.AuthViewModel
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
 
 @Composable
 fun LoginScreen(
@@ -33,6 +41,33 @@ fun LoginScreen(
     val authState by viewModel.authState.collectAsState()
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    val serverClientId = stringResource(id = R.string.server_client_id)
+
+    // Google Sign-In setup
+    val googleSignInClient = remember {
+        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestIdToken(serverClientId)
+            .requestEmail()
+            .build()
+        GoogleSignIn.getClient(context, gso)
+    }
+
+    val googleSignInLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+        try {
+            val account = task.getResult(ApiException::class.java)
+            val idToken = account?.idToken
+            if (idToken != null) {
+                val displayName = account.displayName ?: ""
+                viewModel.loginWithGoogle(idToken, displayName)
+            }
+        } catch (e: ApiException) {
+            viewModel.setErrorMessage("Lỗi đăng nhập Google: ${e.message}")
+        }
+    }
 
     LaunchedEffect(authState.success) {
         if (authState.success) {
@@ -146,6 +181,34 @@ fun LoginScreen(
                     )
                 } else {
                     Text("ĐĂNG NHẬP", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Google Sign In Button
+            Button(
+                onClick = {
+                    val signInIntent = googleSignInClient.signInIntent
+                    googleSignInLauncher.launch(signInIntent)
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .neumorphic(elevation = 8.dp, cornerRadius = 28.dp),
+                shape = RoundedCornerShape(28.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF4285F4)
+                ),
+                enabled = !authState.isLoading
+            ) {
+                if (authState.isLoading) {
+                    CircularProgressIndicator(
+                        color = Color.White,
+                        modifier = Modifier.size(24.dp)
+                    )
+                } else {
+                    Text("ĐĂNG NHẬP VỚI GOOGLE", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 }
             }
 
