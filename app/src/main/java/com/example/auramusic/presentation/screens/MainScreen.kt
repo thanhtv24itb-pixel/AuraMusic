@@ -67,6 +67,25 @@ fun MainScreen(
             CenterAlignedTopAppBar(
                 title = { Text("AuraMusic", fontWeight = FontWeight.Bold) },
                 actions = {
+                    // Lấy quyền của người dùng hiện tại
+                    val myRole = authViewModel.authState.collectAsState().value.user?.role ?: "user"
+
+                    // NÚT MỚI: CHỈ HIỆN CHO BAN QUẢN TRỊ ĐỂ QUAY VỀ DASHBOARD
+                    if (myRole == "admin" || myRole == "moderator") {
+                        IconButton(onClick = {
+                            navController.navigate(Screen.AdminDashboard.route) {
+                                popUpTo(Screen.Main.route) { inclusive = true }
+                            }
+                        }) {
+                            Icon(
+                                imageVector = Icons.Default.AdminPanelSettings, // Icon khiên bảo mật
+                                contentDescription = "Vào Dashboard",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+
+                    // Nút Đổi giao diện (Giữ nguyên của bạn)
                     IconButton(onClick = {
                         val newMode = if (themeMode == ThemeMode.DARK) ThemeMode.LIGHT else ThemeMode.DARK
                         themeViewModel.setThemeMode(newMode)
@@ -77,6 +96,8 @@ fun MainScreen(
                             tint = MaterialTheme.colorScheme.onBackground
                         )
                     }
+
+                    // Nút Profile (Giữ nguyên của bạn)
                     IconButton(onClick = { navController.navigate(Screen.Profile.route) }) {
                         Box(modifier = Modifier
                             .size(36.dp)
@@ -129,7 +150,7 @@ fun MainScreen(
 
         when (selectedItem) {
             0 -> HomeScreen(songViewModel, onSongClick = { song ->
-                songViewModel.playSong(song)
+                // Chỉ giữ lại lệnh chuyển màn hình thôi
                 navController.navigate(Screen.Player.route)
             }, modifier = modifier)
             1 -> SearchContent(songViewModel, navController, modifier)
@@ -192,7 +213,8 @@ fun SearchContent(viewModel: SongViewModel, navController: NavHostController, mo
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(state.searchResults) { song ->
                         SongItem(song = song, onPlayClick = {
-                            viewModel.playSong(song)
+                            // Truyền danh sách kết quả tìm kiếm vào
+                            viewModel.playSong(song, queue = state.searchResults)
                             navController.navigate(Screen.Player.route)
                         })
                     }

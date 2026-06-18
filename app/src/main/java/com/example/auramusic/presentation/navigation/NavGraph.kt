@@ -81,7 +81,8 @@ fun NavGraph(
                                 if (isLocked) {
                                     authViewModel.logout()
                                     authViewModel.setErrorMessage("Tài khoản của bạn đã bị khóa. Vui lòng liên hệ Admin.")
-                                } else if (role == "admin") {
+                                } else if (role == "admin" || role == "moderator") {
+                                    // CHỈNH SỬA: Cả 3 vai trò này đều vào thẳng Dashboard
                                     navController.navigate(Screen.AdminDashboard.route) {
                                         popUpTo(Screen.Login.route) { inclusive = true }
                                     }
@@ -147,7 +148,6 @@ fun NavGraph(
                 viewModel = songViewModel,
                 onBackClick = { navController.popBackStack() },
                 onSongClick = { song ->
-                    songViewModel.playSong(song)
                     navController.navigate(Screen.Player.route)
                 }
             )
@@ -218,7 +218,7 @@ fun NavGraph(
                 songViewModel = songViewModel,
                 onBackClick = { navController.popBackStack() },
                 onSongClick = { song ->
-                    songViewModel.playSong(song)
+
                     navController.navigate(Screen.Player.route)
                 }
             )

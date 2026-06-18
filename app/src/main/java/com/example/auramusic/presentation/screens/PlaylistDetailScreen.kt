@@ -84,7 +84,15 @@ fun PlaylistDetailScreen(
                         ) {
                             // Phần thông tin bài hát chiếm 1 không gian tối đa (weight = 1f)
                             Box(modifier = Modifier.weight(1f)) {
-                                SongItem(song = song, onPlayClick = { onSongClick(song) })
+                                SongItem(
+                                    song = song,
+                                    onPlayClick = {
+                                        // 1. Nạp bài hát và danh sách của Playlist này vào hệ thống
+                                        songViewModel.playSong(song, queue = playlistSongs)
+                                        // 2. Chuyển màn hình
+                                        onSongClick(song)
+                                    }
+                                )
                             }
 
                             // Nút gỡ bài hát nằm bên phải

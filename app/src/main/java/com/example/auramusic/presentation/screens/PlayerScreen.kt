@@ -24,6 +24,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import coil.compose.AsyncImage
 import com.example.auramusic.presentation.viewmodel.AuthViewModel
@@ -63,13 +64,28 @@ fun PlayerScreen(
         }
     }
 
-    // ĐÃ SỬA: Đồng bộ thời gian để đếm View (Thủ phạm khiến view không tăng là đây)
+    // Đồng bộ thời gian để đếm View
     LaunchedEffect(state.isPlaying) {
         while(state.isPlaying) {
             if (exoPlayer.duration > 0) totalDuration = exoPlayer.duration
             val currentPosInSec = (exoPlayer.currentPosition / 1000).toInt()
             viewModel.updateProgress(currentPosInSec, currentUser?.uid)
             delay(1000L)
+        }
+    }
+
+    // Lắng nghe sự kiện ExoPlayer
+    DisposableEffect(exoPlayer) {
+        val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED) {
+                    viewModel.handleSongEnded() // Gọi hàm tự chuyển bài
+                }
+            }
+        }
+        exoPlayer.addListener(listener)
+        onDispose {
+            exoPlayer.removeListener(listener)
         }
     }
 
@@ -141,16 +157,20 @@ fun PlayerScreen(
                 Text(formatTime(durationInSeconds), style = MaterialTheme.typography.bodySmall)
             }
 
-            // Controls
+            // Controls (Đã xóa cái bị trùng lặp)
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = {}) { Icon(Icons.Default.SkipPrevious, contentDescription = null, modifier = Modifier.size(40.dp)) }
+                // NÚT PREV (Lùi bài)
+                IconButton(onClick = { viewModel.playPreviousSong() }) { Icon(Icons.Default.SkipPrevious, contentDescription = null, modifier = Modifier.size(40.dp)) }
+
                 Surface(
                     onClick = { if (state.isPlaying) viewModel.pauseSong() else viewModel.resumeSong() },
                     modifier = Modifier.size(80.dp), shape = CircleShape, color = MaterialTheme.colorScheme.secondary
                 ) {
                     Box(contentAlignment = Alignment.Center) { Icon(if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(48.dp)) }
                 }
-                IconButton(onClick = {}) { Icon(Icons.Default.SkipNext, contentDescription = null, modifier = Modifier.size(40.dp)) }
+
+                // NÚT NEXT (Qua bài)
+                IconButton(onClick = { viewModel.playNextSong() }) { Icon(Icons.Default.SkipNext, contentDescription = null, modifier = Modifier.size(40.dp)) }
             }
             Spacer(modifier = Modifier.height(48.dp))
         }
@@ -171,7 +191,7 @@ fun PlayerScreen(
         }
     }
 
-    // Modal Playlist (Khôi phục lại)
+    // Modal Playlist
     if (showPlaylists) {
         ModalBottomSheet(onDismissRequest = { showPlaylists = false }) {
             PlaylistSelectSection(
@@ -190,7 +210,7 @@ fun PlayerScreen(
         }
     }
 
-    // Modal Bình Luận (Khôi phục lại)
+    // Modal Bình Luận
     if (showComments) {
         val comments = state.comments
         val songId = currentSong.songId
@@ -200,21 +220,39 @@ fun PlayerScreen(
         ModalBottomSheet(onDismissRequest = { showComments = false }, containerColor = Color.Transparent) {
             CommentSection(
                 comments = comments,
+                currentUserId = currentUser?.uid,
                 onSendComment = { text ->
                     if (currentUser != null) {
                         viewModel.addComment(songId, currentUser.uid, currentUser.displayName ?: "User", currentUser.avatarUrl ?: "", text)
                     } else {
                         Toast.makeText(context, "Vui lòng đăng nhập!", Toast.LENGTH_SHORT).show()
                     }
+                },
+                onDeleteComment = { commentId ->
+                    viewModel.deleteComment(
+                        songId = songId,
+                        commentId = commentId,
+                        onSuccess = {
+                            Toast.makeText(context, "Đã xóa bình luận", Toast.LENGTH_SHORT).show()
+                        },
+                        onError = { err ->
+                            Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
+                        }
+                    )
                 }
             )
         }
     }
 }
 
-// CÁC COMPOSABLE PHỤ DƯỚI ĐÂY (Cũng bị bạn xóa mất nên giờ phải thêm lại)
+// CÁC COMPOSABLE PHỤ DƯỚI ĐÂY
 @Composable
-fun CommentSection(comments: List<com.example.auramusic.domain.model.Comment>, onSendComment: (String) -> Unit) {
+fun CommentSection(
+    comments: List<com.example.auramusic.domain.model.Comment>,
+    currentUserId: String?,
+    onSendComment: (String) -> Unit,
+    onDeleteComment: (String) -> Unit
+) {
     var commentText by remember { mutableStateOf("") }
     Box(modifier = Modifier
         .fillMaxHeight(0.8f)
@@ -230,7 +268,15 @@ fun CommentSection(comments: List<com.example.auramusic.domain.model.Comment>, o
                     .weight(1f)
                     .fillMaxWidth(), contentAlignment = Alignment.Center) { Text("Chưa có bình luận nào. Hãy là người đầu tiên!") }
             } else {
-                LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) { items(comments) { comment -> CommentItem(comment) } }
+                LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    items(comments) { comment ->
+                        CommentItem(
+                            comment = comment,
+                            currentUserId = currentUserId,
+                            onDeleteClick = { commentId -> onDeleteComment(commentId) }
+                        )
+                    }
+                }
             }
             Spacer(modifier = Modifier.height(16.dp))
             Row(modifier = Modifier
@@ -245,16 +291,39 @@ fun CommentSection(comments: List<com.example.auramusic.domain.model.Comment>, o
 }
 
 @Composable
-fun CommentItem(comment: com.example.auramusic.domain.model.Comment) {
-    Row(modifier = Modifier.fillMaxWidth()) {
-        AsyncImage(model = comment.userAvatar.ifBlank { "https://cdn-icons-png.flaticon.com/512/149/149071.png" }, contentDescription = null, modifier = Modifier
-            .size(40.dp)
-            .clip(CircleShape), contentScale = ContentScale.Crop)
+fun CommentItem(
+    comment: com.example.auramusic.domain.model.Comment,
+    currentUserId: String?,
+    onDeleteClick: (String) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        AsyncImage(
+            model = comment.userAvatar.ifBlank { "https://cdn-icons-png.flaticon.com/512/149/149071.png" },
+            contentDescription = null,
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape),
+            contentScale = ContentScale.Crop
+        )
         Spacer(modifier = Modifier.width(12.dp))
-        Column {
+
+        Column(modifier = Modifier.weight(1f)) {
             Text(comment.userName, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
             Text(comment.content, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
             Text(text = java.text.DateFormat.getDateTimeInstance().format(java.util.Date(comment.timestamp)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+
+        if (currentUserId != null && currentUserId == comment.userId) {
+            IconButton(onClick = { onDeleteClick(comment.id) }) {
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = "Xóa",
+                    tint = Color.Red.copy(alpha = 0.7f)
+                )
+            }
         }
     }
 }

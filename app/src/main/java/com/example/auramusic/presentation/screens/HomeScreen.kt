@@ -93,54 +93,78 @@ fun HomeScreen(
                     ) { page ->
                         val song = trendingSongs[page]
 
-                        Card(
+                        Box(
                             modifier = Modifier
-                                .fillMaxSize()
-                                .clickable { onSongClick(song) },
-                            shape = RoundedCornerShape(20.dp),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp)
                         ) {
-                            Box(modifier = Modifier.fillMaxSize()) {
-                                AsyncImage(
-                                    model = song.imageUrl.ifBlank { "https://via.placeholder.com/300" },
-                                    contentDescription = null,
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop
-                                )
+                            HorizontalPager(
+                                state = pagerState,
+                                contentPadding = PaddingValues(0.dp),
+                                pageSpacing = 0.dp,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(240.dp)
+                                    .clip(RoundedCornerShape(20.dp))
+                            ) { page ->
+                                val song = trendingSongs[page]
 
-                                // Lớp phủ đen mờ để chữ nổi bật
-                                Box(
+                                // ĐÂY LÀ CHỖ CẦN SỬA NÈ
+                                Card(
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .background(
-                                            Brush.verticalGradient(
-                                                colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.9f)),
-                                                startY = 150f
-                                            )
-                                        )
-                                )
-
-                                Column(
-                                    modifier = Modifier
-                                        .align(Alignment.BottomStart)
-                                        .padding(16.dp)
+                                        .clickable {
+                                            // 1. Nạp bài hát và truyền danh sách "Nghe nhiều nhất" vào queue
+                                            viewModel.playSong(song, queue = state.mostPlayedSongs)
+                                            // 2. Chuyển màn hình
+                                            onSongClick(song)
+                                        },
+                                    shape = RoundedCornerShape(20.dp),
+                                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
                                 ) {
-                                    Text(
-                                        text = song.title,
-                                        color = Color.White,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 22.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = song.artistName,
-                                        color = Color.LightGray,
-                                        fontSize = 15.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
+                                    Box(modifier = Modifier.fillMaxSize()) {
+                                        AsyncImage(
+                                            model = song.imageUrl.ifBlank { "https://via.placeholder.com/300" },
+                                            contentDescription = null,
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.Crop
+                                        )
+
+                                        // Lớp phủ đen mờ để chữ nổi bật
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .background(
+                                                    Brush.verticalGradient(
+                                                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.9f)),
+                                                        startY = 150f
+                                                    )
+                                                )
+                                        )
+
+                                        Column(
+                                            modifier = Modifier
+                                                .align(Alignment.BottomStart)
+                                                .padding(16.dp)
+                                        ) {
+                                            Text(
+                                                text = song.title,
+                                                color = Color.White,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 22.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                text = song.artistName,
+                                                color = Color.LightGray,
+                                                fontSize = 15.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                } // Kết thúc Card
                             }
                         }
                     }
@@ -163,7 +187,15 @@ fun HomeScreen(
             }
         } else {
             items(state.recentSongs) { song ->
-                SongItem(song = song, onPlayClick = { onSongClick(song) })
+                SongItem(
+                    song = song,
+                    onPlayClick = {
+                        // 1. Nạp bài hát và toàn bộ danh sách "Nhạc mới" vào hệ thống
+                        viewModel.playSong(song, state.recentSongs)
+                        // 2. Chuyển màn hình
+                        onSongClick(song)
+                    }
+                )
             }
         }
 

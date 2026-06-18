@@ -27,11 +27,14 @@ data class SongUiState(
     val selectedCategorySongs: List<Song> = emptyList(),
     val artistSongs: List<Song> = emptyList(),
     val currentSong: Song? = null,
+    val playingQueue: List<Song> = emptyList(), // Danh sách đang phát
+    val currentIndex: Int = -1,
     val isPlaying: Boolean = false,
     val currentPosition: Int = 0,
     val error: String? = null,
     val isCurrentSongLiked: Boolean = false,
     val comments: List<Comment> = emptyList()
+
 )
 
 class SongViewModel(
@@ -146,13 +149,37 @@ class SongViewModel(
         }
     }
 
-    fun playSong(song: Song) {
+    fun playSong(song: Song, queue: List<Song> = emptyList()) {
+        // Nếu không có danh sách truyền vào, tự tạo danh sách có 1 bài
+        val actualQueue = if (queue.isNotEmpty()) queue else listOf(song)
+        // Tìm vị trí bài hát trong danh sách
+        val index = actualQueue.indexOf(song).takeIf { it >= 0 } ?: 0
+
         _songState.value = _songState.value.copy(
             currentSong = song,
+            playingQueue = actualQueue,
+            currentIndex = index,
             isPlaying = true,
             currentPosition = 0
         )
         hasCountedViewAndHistory = false
+    }
+    fun playNextSong() {
+        val state = _songState.value
+        if (state.playingQueue.isNotEmpty()) {
+            val nextIndex = if (state.currentIndex < state.playingQueue.size - 1) state.currentIndex + 1 else 0
+            val nextSong = state.playingQueue[nextIndex]
+            playSong(nextSong, state.playingQueue)
+        }
+    }
+
+    fun playPreviousSong() {
+        val state = _songState.value
+        if (state.playingQueue.isNotEmpty()) {
+            val prevIndex = if (state.currentIndex > 0) state.currentIndex - 1 else state.playingQueue.size - 1
+            val prevSong = state.playingQueue[prevIndex]
+            playSong(prevSong, state.playingQueue)
+        }
     }
 
     fun pauseSong() {
@@ -188,8 +215,8 @@ class SongViewModel(
             updateProgress(0, null)
             stopAfterCurrentSong = false
         } else {
-            pauseSong()
-            updateProgress(0, null)
+            // Hết bài thì tự động chuyển bài tiếp theo
+            playNextSong()
         }
     }
 

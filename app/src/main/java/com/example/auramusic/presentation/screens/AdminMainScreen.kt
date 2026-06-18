@@ -30,10 +30,25 @@ val adminMenus = listOf(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AdminMainScreen(navController: NavController, authViewModel: AuthViewModel,adminViewModel: AdminViewModel = androidx.lifecycle.viewmodel.compose.viewModel()) {
+fun AdminMainScreen(navController: NavController, authViewModel: AuthViewModel, adminViewModel: AdminViewModel = androidx.lifecycle.viewmodel.compose.viewModel()) {
+    // LẤY QUYỀN CỦA TÀI KHOẢN ĐANG ĐĂNG NHẬP
+    val authState by authViewModel.authState.collectAsState()
+    val myRole = authState.user?.role ?: "user"
+
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    var currentTab by remember { mutableStateOf(adminMenus[0]) }
+
+    // LỌC MENU DỰA TRÊN PHÂN QUYỀN
+    val allowedMenus = remember(myRole) {
+        if (myRole == "admin") {
+            adminMenus // Admin thấy hết 5 tab
+        } else {
+            // Moderator chỉ thấy 3 tab này
+            adminMenus.filter { it.id in listOf("categories", "songs", "users") }
+        }
+    }
+
+    var currentTab by remember { mutableStateOf(allowedMenus.firstOrNull() ?: adminMenus[0]) }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -45,11 +60,19 @@ fun AdminMainScreen(navController: NavController, authViewModel: AuthViewModel,a
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFFEF4444),
-                    modifier = Modifier.padding(horizontal = 28.dp, vertical = 16.dp)
+                    modifier = Modifier.padding(horizontal = 28.dp, vertical = 8.dp)
+                )
+                // Hiển thị chức danh để người dùng biết họ đang đăng nhập với quyền gì
+                Text(
+                    text = "Quyền: ${myRole.uppercase()}",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.Gray,
+                    modifier = Modifier.padding(horizontal = 28.dp, vertical = 4.dp).padding(bottom = 16.dp)
                 )
                 HorizontalDivider(modifier = Modifier.padding(bottom = 8.dp))
 
-                adminMenus.forEach { menu ->
+                allowedMenus.forEach { menu ->
                     NavigationDrawerItem(
                         icon = { Icon(menu.icon, contentDescription = menu.title) },
                         label = { Text(menu.title, fontWeight = FontWeight.Medium) },
@@ -63,7 +86,20 @@ fun AdminMainScreen(navController: NavController, authViewModel: AuthViewModel,a
                 }
 
                 Spacer(modifier = Modifier.weight(1f))
-
+                NavigationDrawerItem(
+                    icon = { Icon(Icons.Default.PhoneAndroid, contentDescription = "App", tint = MaterialTheme.colorScheme.primary) },
+                    label = { Text("Mở App Nghe nhạc", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary) },
+                    selected = false,
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        // Chuyển sang MainScreen
+                        navController.navigate(Screen.Main.route) {
+                            // Xóa AdminDashboard khỏi ngăn xếp để tránh lỗi back nhầm
+                            popUpTo(Screen.AdminDashboard.route) { inclusive = true }
+                        }
+                    },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                )
                 // Nút Đăng xuất
                 NavigationDrawerItem(
                     icon = { Icon(Icons.Default.Logout, contentDescription = "Đăng xuất", tint = Color.Red) },
@@ -72,7 +108,7 @@ fun AdminMainScreen(navController: NavController, authViewModel: AuthViewModel,a
                     onClick = {
                         authViewModel.logout()
                         navController.navigate(Screen.Login.route) {
-                            popUpTo(0) { inclusive = true } // Xóa lịch sử để không back lại được
+                            popUpTo(0) { inclusive = true }
                         }
                     },
                     modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding).padding(bottom = 24.dp)
@@ -95,14 +131,14 @@ fun AdminMainScreen(navController: NavController, authViewModel: AuthViewModel,a
         ) { paddingValues ->
             Box(
                 modifier = Modifier.fillMaxSize().padding(paddingValues),
-                contentAlignment = Alignment.TopCenter // Đổi thành TopCenter để nội dung không bị rớt xuống giữa màn hình
+                contentAlignment = Alignment.TopCenter
             ) {
-                // Thêm lệnh when để chia đường cho từng Tab
                 when (currentTab.id) {
-                    "dashboard" -> AdminDashboardScreen(viewModel = adminViewModel) // Gọi màn hình Tổng quan xịn xò vào đây
+                    "dashboard" -> AdminDashboardScreen(viewModel = adminViewModel)
                     "categories" -> AdminCategoryScreen(viewModel = adminViewModel)
                     "songs" -> AdminSongScreen(viewModel = adminViewModel)
-                    "users" -> AdminUserScreen(viewModel = adminViewModel)
+                    // TRUYỀN QUYỀN CỦA MÌNH SANG MÀN HÌNH QUẢN LÝ USER
+                    "users" -> AdminUserScreen(viewModel = adminViewModel, myRole = myRole)
                     "transactions" -> AdminTransactionScreen(viewModel = adminViewModel)
                 }
             }

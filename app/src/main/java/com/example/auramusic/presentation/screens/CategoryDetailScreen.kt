@@ -73,7 +73,15 @@ fun CategoryDetailScreen(
                 ) {
                     item { Spacer(modifier = Modifier.height(16.dp)) }
                     items(state.selectedCategorySongs) { song ->
-                        SongItem(song = song, onPlayClick = onSongClick)
+                        SongItem(
+                            song = song,
+                            onPlayClick = {
+                                // 1. Nạp bài hát và danh sách của Thể loại này vào hệ thống
+                                viewModel.playSong(song, queue = state.selectedCategorySongs)
+                                // 2. Chuyển màn hình
+                                onSongClick(song)
+                            }
+                        )
                     }
                     item { Spacer(modifier = Modifier.height(16.dp)) }
                 }

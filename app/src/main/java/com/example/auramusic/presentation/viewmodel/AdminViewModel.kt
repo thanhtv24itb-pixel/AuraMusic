@@ -32,6 +32,7 @@ class AdminViewModel : ViewModel() {
         private set
     var isLoading by mutableStateOf(true)
         private set
+
     var categories by mutableStateOf<List<Category>>(emptyList())
         private set
     var allSongs by mutableStateOf<List<Song>>(emptyList())
@@ -41,7 +42,7 @@ class AdminViewModel : ViewModel() {
     var allTransactions by mutableStateOf<List<Transaction>>(emptyList())
         private set
 
-    // Hàm gọi Firebase để lấy dữ liệu
+    // --- CÁC HÀM TỔNG QUAN ---
     fun loadDashboardStats() {
         viewModelScope.launch {
             isLoading = true
@@ -75,6 +76,7 @@ class AdminViewModel : ViewModel() {
         }
     }
 
+    // --- QUẢN LÝ DANH MỤC ---
     fun loadCategories() {
         categoriesListener?.remove()
         categoriesListener = db.collection("categories").addSnapshotListener { snapshot, error ->
@@ -111,6 +113,7 @@ class AdminViewModel : ViewModel() {
         db.collection("categories").document(id).delete()
     }
 
+    // --- QUẢN LÝ BÀI HÁT ---
     fun loadAllSongs() {
         songsListener?.remove()
         songsListener = db.collection("songs")
@@ -135,24 +138,19 @@ class AdminViewModel : ViewModel() {
             }
     }
 
-    // ĐÃ SỬA: Hàm từ chối cập nhật trạng thái và lý do bằng cách dùng biến db có sẵn
     fun rejectSong(songId: String, reason: String) {
         if (songId.isBlank()) return
         db.collection("songs").document(songId)
             .update(
                 mapOf(
                     "status" to "rejected",
-                    "rejectReason" to reason // Đẩy lý do lên database
+                    "rejectReason" to reason
                 )
             )
             .addOnSuccessListener {
-                // Cập nhật lại giao diện ngay lập tức
                 allSongs = allSongs.map {
                     if (it.songId == songId) {
-                        it.copy().apply {
-                            status = "rejected"
-                            // Firebase Snapshot listener cũng sẽ tự fetch và đồng bộ lại rejectReason nếu ở giao diện khác
-                        }
+                        it.copy().apply { status = "rejected" }
                     } else it
                 }
             }
@@ -172,6 +170,17 @@ class AdminViewModel : ViewModel() {
     }
 
     // --- QUẢN LÝ USER ---
+    var userSearchQuery by mutableStateOf("")
+    var userRoleFilter by mutableStateOf("all")
+
+    val filteredUsers: List<User>
+        get() = allUsers.filter { user ->
+            val matchSearch = user.displayName.contains(userSearchQuery, ignoreCase = true) ||
+                    user.email.contains(userSearchQuery, ignoreCase = true)
+            val matchRole = if (userRoleFilter == "all") true else user.role == userRoleFilter
+            matchSearch && matchRole
+        }
+
     fun loadAllUsers() {
         usersListener?.remove()
         usersListener = db.collection("users").addSnapshotListener { snapshot, _ ->
@@ -181,6 +190,14 @@ class AdminViewModel : ViewModel() {
                 }
             }
         }
+    }
+
+    fun updateSearchQuery(query: String) {
+        userSearchQuery = query
+    }
+
+    fun updateRoleFilter(role: String) {
+        userRoleFilter = role
     }
 
     fun updateUserRole(userId: String, newRole: String) {
@@ -224,6 +241,77 @@ class AdminViewModel : ViewModel() {
             }
     }
 
+    // ==========================================
+    // LOGIC TÍNH TOÁN DỮ LIỆU BIỂU ĐỒ
+    // ==========================================
+    var revenueFilter by mutableStateOf("7days") // 3 chế độ: "7days", "month", "year"
+
+    // Hàm lấy dữ liệu Biểu đồ Doanh thu (VỪA ĐƯỢC THÊM VÀO)
+    fun getRevenueChartData(): List<Pair<String, Float>> {
+        val calendar = java.util.Calendar.getInstance()
+        val currentYear = calendar.get(java.util.Calendar.YEAR)
+        val currentMonth = calendar.get(java.util.Calendar.MONTH)
+        val formatDay = java.text.SimpleDateFormat("dd/MM", java.util.Locale.getDefault())
+
+        return when (revenueFilter) {
+            "7days" -> {
+                val map = mutableMapOf<String, Float>()
+                for (i in 6 downTo 0) {
+                    calendar.timeInMillis = System.currentTimeMillis() - i * 86400000L
+                    map[formatDay.format(calendar.time)] = 0f
+                }
+                allTransactions.forEach { tx ->
+                    val createdAtMs = tx.createdAt?.toDate()?.time ?: return@forEach
+
+                    if (System.currentTimeMillis() - createdAtMs <= 7 * 86400000L) {
+                        calendar.timeInMillis = createdAtMs
+                        val key = formatDay.format(calendar.time)
+                        val amount = tx.amount.toFloat()
+                        if (map.containsKey(key)) map[key] = map[key]!! + amount
+                    }
+                }
+                map.toList()
+            }
+            "month" -> {
+                val map = mutableMapOf("Tuần 1" to 0f, "Tuần 2" to 0f, "Tuần 3" to 0f, "Tuần 4" to 0f)
+                allTransactions.forEach { tx ->
+                    val createdAtMs = tx.createdAt?.toDate()?.time ?: return@forEach
+                    calendar.timeInMillis = createdAtMs
+
+                    if (calendar.get(java.util.Calendar.YEAR) == currentYear && calendar.get(java.util.Calendar.MONTH) == currentMonth) {
+                        val amount = tx.amount.toFloat()
+                        when (calendar.get(java.util.Calendar.DAY_OF_MONTH)) {
+                            in 1..7 -> map["Tuần 1"] = map["Tuần 1"]!! + amount
+                            in 8..14 -> map["Tuần 2"] = map["Tuần 2"]!! + amount
+                            in 15..21 -> map["Tuần 3"] = map["Tuần 3"]!! + amount
+                            else -> map["Tuần 4"] = map["Tuần 4"]!! + amount
+                        }
+                    }
+                }
+                map.toList()
+            }
+            "year" -> {
+                val map = mutableMapOf<String, Float>()
+                for (i in 1..12) map["T$i"] = 0f
+                allTransactions.forEach { tx ->
+                    val createdAtMs = tx.createdAt?.toDate()?.time ?: return@forEach
+                    calendar.timeInMillis = createdAtMs
+
+                    if (calendar.get(java.util.Calendar.YEAR) == currentYear) {
+                        val month = calendar.get(java.util.Calendar.MONTH) + 1
+                        val amount = tx.amount.toFloat()
+                        map["T$month"] = map["T$month"]!! + amount
+                    }
+                }
+                map.toList()
+            }
+            else -> emptyList()
+        }
+    }
+
+
+
+    // onCleared PHẢI NẰM Ở CUỐI CÙNG
     override fun onCleared() {
         super.onCleared()
         categoriesListener?.remove()
